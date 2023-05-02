@@ -48,7 +48,19 @@ class TCF(object):
     def gpp_daily(self, drivers: Sequence) -> numpy.ndarray:
         '''
         Calculates daily gross primary production (GPP) under prevailing
-        climatic conditions.
+        climatic conditions. Order of driver variables should be:
+
+            Fraction of PAR intercepted (fPAR) [0-1]
+            Downwelling short-wave radiation [MJ m-2 day-1]
+            Minimum temperature (Tmin) [deg K]
+            Water vapor mixing ratio at 2-m height (QV2M) [kg kg-1]
+            Surface air pressure [Pa]
+            Root-zone soil moisture wetness, volume proportion [0-1]
+            Freeze-thaw (FT) state [0 = Thawed, 1 = Frozen]
+
+        The FT state is optional; if that axis of the data cube is not
+        provided, FT state will be calculated from Tmin using a threshold
+        of 32 degrees F.
 
         Parameters
         ----------
@@ -67,6 +79,17 @@ class TCF(object):
         '''
         Calculates the net ecosystem CO2 exchange (NEE) based on the available
         soil organic carbon (SOC) state and prevailing climatic conditions.
+        Order of driver variables should be:
+
+            Fraction of PAR intercepted (fPAR) [0-1]
+            Downwelling short-wave radiation [MJ m-2 day-1]
+            Minimum temperature (Tmin) [deg K]
+            Water vapor mixing ratio at 2-m height (QV2M) [kg kg-1]
+            Surface air pressure [Pa]
+            Root-zone soil moisture wetness, volume proportion [0-1]
+            Freeze-thaw (FT) state [0 = Thawed, 1 = Frozen]
+            Soil temperature in the top (0-5 cm) layer [deg K]
+            Surface soil moisture wetness, volume proportion [0-1]
 
         Parameters
         ----------
@@ -88,6 +111,10 @@ class TCF(object):
         '''
         Calculates daily heterotrophic respiration (RH) based on the available
         soil organic carbon (SOC) state and prevailing climatic conditions.
+        Order of driver variables should be:
+
+            Soil temperature in the top (0-5 cm) layer [deg K]
+            Surface soil moisture wetness, volume proportion [0-1]
 
         Parameters
         ----------
