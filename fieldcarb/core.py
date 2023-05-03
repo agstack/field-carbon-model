@@ -23,6 +23,10 @@ class TCF(object):
     4. The efficiency of soil organic carbon decomposition is reduced under
         low soil temperatures or low soil moisture.
 
+    A complete description is available in Kimball et al. (2009) and in Jones
+    et al. (2017). Soil organic carbon and soil decomposition are discussed
+    in Endsley et al. (2020) and Endsley et al. (2022).
+
     Example use for a single pixel:
 
         tcf = TCF(land_cover_map = [7])
@@ -78,7 +82,10 @@ class TCF(object):
         pass
 
 
-    def nee_daily(self, drivers: Sequence, state: Sequence = None) -> numpy.ndarray:
+    def nee_daily(
+            self, drivers: Sequence, state: Sequence = None,
+            compute_ft: bool = False
+        ) -> numpy.ndarray:
         '''
         Calculates the net ecosystem CO2 exchange (NEE) based on the available
         soil organic carbon (SOC) state and prevailing climatic conditions.
@@ -93,6 +100,9 @@ class TCF(object):
             Soil temperature in the top (0-5 cm) layer [deg K]
             Surface soil moisture wetness, volume proportion [0-1]
 
+        Even if compute_ft = True, the axis of "drivers" corresponding to FT
+        state must be provided; it could be all NaNs.
+
         Parameters
         ----------
         drivers : Sequence or numpy.ndarray
@@ -101,6 +111,9 @@ class TCF(object):
         state : Sequence or numpy.ndarray or None
             A sequence of 3 values or an (3 x N) array representing the
             initial SOC state in each SOC pool
+        compute_ft : bool
+            If True, the freeze-thaw (FT) state is computed based on Tmin; if
+            False, FT must be provided among drivers.
 
         Returns
         -------

@@ -13,3 +13,17 @@ While this project is in active development, it's currently recommended to insta
 # From the directory containing setup.py
 pip install -e .
 ```
+
+During development, it's convenient to rely upon the [`pyl4c` package](https://github.com/arthur-e/pyl4c) for some functionality. However, `pyl4c` is not a hard requirement because it has some dependencies that may be difficult for some users to install (HDF5 and GDAL). To install with support for `pyl4c`:
+
+```sh
+# Install GDAL first, ensuring that the version matches the system library
+pip install GDAL==$(gdal-config --version)
+pip install -e .[pyl4c]
+```
+
+
+Prior Art and Citation
+----------------------
+
+Model code here is based heavily on the publicly available [`pyl4c` package](https://github.com/arthur-e/pyl4c) (Endsley et al. 2022). See `REFERENCES` for a complete list of references.
