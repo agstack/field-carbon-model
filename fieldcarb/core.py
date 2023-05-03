@@ -34,6 +34,9 @@ class TCF(object):
     land_cover_map : Sequence or numpy.ndarray
         1-dimensional sequence of one or more land-cover types, one for each
         model resolution cell (pixel)
+    state : Sequence or numpy.ndarray
+        A sequence of 3 values or an (3 x N) array representing the
+        initial SOC state in each SOC pool
     '''
 
     valid_pft = {
@@ -41,8 +44,9 @@ class TCF(object):
         8: 'Broadleaf Croplands'
     }
 
-    def __init__(self, land_cover_map: Sequence):
+    def __init__(self, land_cover_map: Sequence, state: Sequence = None):
         self.pft = land_cover_map
+        self.state = state
 
 
     def gpp_daily(self, drivers: Sequence) -> numpy.ndarray:
@@ -51,10 +55,9 @@ class TCF(object):
         climatic conditions. Order of driver variables should be:
 
             Fraction of PAR intercepted (fPAR) [0-1]
-            Downwelling short-wave radiation [MJ m-2 day-1]
+            Photosynthetically active radation (PAR) [MJ m-2 day-1]
             Minimum temperature (Tmin) [deg K]
-            Water vapor mixing ratio at 2-m height (QV2M) [kg kg-1]
-            Surface air pressure [Pa]
+            Vapor pressure deficit (VPD) [Pa]
             Root-zone soil moisture wetness, volume proportion [0-1]
             Freeze-thaw (FT) state [0 = Thawed, 1 = Frozen]
 
@@ -75,17 +78,16 @@ class TCF(object):
         pass
 
 
-    def nee_daily(self, state: Sequence, drivers: Sequence) -> numpy.ndarray:
+    def nee_daily(self, drivers: Sequence, state: Sequence = None) -> numpy.ndarray:
         '''
         Calculates the net ecosystem CO2 exchange (NEE) based on the available
         soil organic carbon (SOC) state and prevailing climatic conditions.
         Order of driver variables should be:
 
             Fraction of PAR intercepted (fPAR) [0-1]
-            Downwelling short-wave radiation [MJ m-2 day-1]
+            Photosynthetically active radation (PAR) [MJ m-2 day-1]
             Minimum temperature (Tmin) [deg K]
-            Water vapor mixing ratio at 2-m height (QV2M) [kg kg-1]
-            Surface air pressure [Pa]
+            Vapor pressure deficit (VPD) [Pa]
             Root-zone soil moisture wetness, volume proportion [0-1]
             Freeze-thaw (FT) state [0 = Thawed, 1 = Frozen]
             Soil temperature in the top (0-5 cm) layer [deg K]
@@ -93,12 +95,12 @@ class TCF(object):
 
         Parameters
         ----------
-        state : Sequence or numpy.ndarray
-            A sequence of 3 values or an (3 x N) array representing the
-            initial SOC state in each SOC pool
         drivers : Sequence or numpy.ndarray
             Either a 1D sequence of P driver variables or a 3D data cube of
             shape (P x N x T), for N pixels, and T time steps
+        state : Sequence or numpy.ndarray or None
+            A sequence of 3 values or an (3 x N) array representing the
+            initial SOC state in each SOC pool
 
         Returns
         -------
@@ -107,7 +109,7 @@ class TCF(object):
         pass
 
 
-    def rh_daily(self, state: Sequence, drivers: Sequence) -> numpy.ndarray:
+    def rh_daily(self, drivers: Sequence, state: Sequence = None) -> numpy.ndarray:
         '''
         Calculates daily heterotrophic respiration (RH) based on the available
         soil organic carbon (SOC) state and prevailing climatic conditions.
@@ -118,12 +120,12 @@ class TCF(object):
 
         Parameters
         ----------
-        state : Sequence or numpy.ndarray
-            A sequence of 3 values or an (3 x N) array representing the
-            initial SOC state in each SOC pool
         drivers : Sequence or numpy.ndarray
             Either a 1D sequence of P driver variables or a 3D data cube of
             shape (P x N x T), for N pixels, and T time steps
+        state : Sequence or numpy.ndarray or None
+            A sequence of 3 values or an (3 x N) array representing the
+            initial SOC state in each SOC pool
 
         Returns
         -------

@@ -1,0 +1,4 @@
+virtualenv.sh
+lib/python/build
+*.egg-info/
+__pycache__
