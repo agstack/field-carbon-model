@@ -4,7 +4,10 @@ Flux (TCF) model.
 '''
 
 import numpy as np
-from typing import Number, Sequence
+from numbers import Number
+from typing import Sequence
+from fieldcarb import Namespace
+from fieldcarb.utils import linear_constraint
 
 
 class TCF(object):
@@ -35,6 +38,11 @@ class TCF(object):
 
     Parameters
     ----------
+    params : dict
+        Dictionary of model parameters; keys should be among
+        `TCF.required_parameters` and values should be sequences ordered by
+        PFT code, either 9 values (value at index 0 being `np.nan`) or as many
+        values as there are keys in `TCF.valid_pft`
     land_cover_map : Sequence or numpy.ndarray
         1-dimensional sequence of one or more land-cover types, one for each
         model resolution cell (pixel)
@@ -43,17 +51,66 @@ class TCF(object):
         initial SOC state in each SOC pool
     '''
 
+    required_parameters = [
+        'LUE', 'tmin0', 'tmin1', 'vpd0', 'vpd1', 'smrz0', 'smrz1', 'ft0',
+        'CUE', 'tsoil', 'smsf0', 'smsf1'
+    ]
     valid_pft = {
         7: 'Cereal Croplands',
         8: 'Broadleaf Croplands'
     }
 
-    def __init__(self, land_cover_map: Sequence, state: Sequence = None):
+    def __init__(
+            self, params: dict, land_cover_map: Sequence,
+            state: Sequence = None
+        ):
+        self.params = Namespace()
         self.pft = land_cover_map
         self.state = state
+        # Each parameter should be accessed, e.g., tcf.params.LUE
+        for key, value in params.items():
+            self.params.add(key, value)
 
+    def _rescale_smrz(self, smrz0, smrz_min, smrz_max = 1):
+        r'''
+        Rescales root-zone soil-moisture (SMRZ) to increase plant sensitivity to
+        very low water availability.
 
-    def gpp_daily(self, drivers: Sequence) -> numpy.ndarray:
+        $$
+        \hat{\theta} &= 100 \times\left(
+        \frac{\theta - \theta_{WP}}{\text{max}(\theta) - \theta_{WP}}
+        \right) + 1\\
+        \theta_{RZ} &= 0.95 \times
+        \frac{\text{ln}(\hat{\theta} \times 100)}{\text{ln(101)}} + 0.05
+        $$
+
+        Parameters
+        ----------
+        smrz0 : numpy.ndarray
+            (N x T) array of original SMRZ data, in proportion saturation [0-1]
+            units for N sites and T time steps
+        smrz_min : numpy.ndarray or float
+            Site-level long-term minimum SMRZ (proportion saturation)
+        smrz_max : numpy.ndarray or float
+            Site-level long-term maximum SMRZ (proportion saturation); can
+            optionally provide a fixed upper-limit on SMRZ
+
+        Returns
+        -------
+        numpy.ndarray
+        '''
+        # Clip input SMRZ to the lower, upper bounds
+        smrz0 = np.where(smrz0 < smrz_min, smrz_min, smrz0)
+        smrz0 = np.where(smrz0 > smrz_max, smrz_max, smrz0)
+        smrz_norm = np.divide(
+            np.subtract(smrz0, smrz_min),
+            np.subtract(smrz_max, smrz_min)) + 0.01
+        # Log-transform normalized data and rescale to range between
+        #   5.0 and 100% saturation)
+        return np.add(
+            np.multiply(0.95, np.divide(np.log(smrz_norm * 100), np.log(101))), 0.05)
+
+    def gpp_daily(self, drivers: Sequence) -> np.ndarray:
         '''
         Calculates daily gross primary production (GPP) under prevailing
         climatic conditions. Order of driver variables should be:
@@ -63,11 +120,11 @@ class TCF(object):
             Minimum temperature (Tmin) [deg K]
             Vapor pressure deficit (VPD) [Pa]
             Root-zone soil moisture wetness, volume proportion [0-1]
-            Freeze-thaw (FT) state [0 = Thawed, 1 = Frozen]
+            Freeze-thaw (FT) state of soil [0 = Frozen, 1 = Thawed]
 
         The FT state is optional; if that axis of the data cube is not
         provided, FT state will be calculated from Tmin using a threshold
-        of 32 degrees F.
+        of 32 degrees F (273.15 deg K).
 
         Parameters
         ----------
@@ -79,13 +136,29 @@ class TCF(object):
         -------
         numpy.ndarray
         '''
-        pass
-
+        if drivers.shape[0] == 5:
+            fpar, par, tmin, vpd, smrz0 = drivers
+            ft0 = np.where(tmin < 273.15, 0, 1)
+        else:
+            fpar, par, tmin, vpd, smrz0, ft0 = drivers
+        # Rescale root-zone soil moisture
+        smrz = self._rescale_smrz(smrz0, np.nanmin(smrz0, axis = -1))
+        # Convert freeze-thaw flag to a multiplier (always 1 when thawed but
+        #   potentially non-zero and less than 1 when thawed)
+        ft = np.where(ft0 == 0, self.params.ft0, 1)
+        # Get a function that constrains each met. driver to [0, 1]
+        f_tmin = linear_constraint(self.params.tmin0, self.params.tmin1)
+        f_vpd = linear_constraint(
+            self.params.vpd0, self.params.vpd1, 'reversed')
+        f_smrz = linear_constraint(self.params.smrz0, self.params.smrz1)
+        # Compute the environmental constraint
+        e_mult = ft * f_tmin(tmin) * f_vpd(vpd) * f_smrz(smrz)
+        return par * fpar * e_mult * self.params.LUE
 
     def nee_daily(
             self, drivers: Sequence, state: Sequence = None,
             compute_ft: bool = False
-        ) -> numpy.ndarray:
+        ) -> np.ndarray:
         '''
         Calculates the net ecosystem CO2 exchange (NEE) based on the available
         soil organic carbon (SOC) state and prevailing climatic conditions.
@@ -96,7 +169,7 @@ class TCF(object):
             Minimum temperature (Tmin) [deg K]
             Vapor pressure deficit (VPD) [Pa]
             Root-zone soil moisture wetness, volume proportion [0-1]
-            Freeze-thaw (FT) state [0 = Thawed, 1 = Frozen]
+            Freeze-thaw (FT) state of soil [0 = Frozen, 1 = Thawed]
             Soil temperature in the top (0-5 cm) layer [deg K]
             Surface soil moisture wetness, volume proportion [0-1]
 
@@ -121,8 +194,7 @@ class TCF(object):
         '''
         pass
 
-
-    def rh_daily(self, drivers: Sequence, state: Sequence = None) -> numpy.ndarray:
+    def rh_daily(self, drivers: Sequence, state: Sequence = None) -> np.ndarray:
         '''
         Calculates daily heterotrophic respiration (RH) based on the available
         soil organic carbon (SOC) state and prevailing climatic conditions.

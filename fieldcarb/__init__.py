@@ -1,3 +1,19 @@
-import importlib.metadata
+class Namespace(object):
+    '''
+    Dummy class for holding attributes.
+    '''
+    def __init__(self):
+        pass
 
-__version__ = importlib.metadata.version("mypackage")
+    def add(self, label, value):
+        '''
+        Adds a new attribute to the Namespace instance.
+
+        Parameters
+        ----------
+        label : str
+            The name of the attribute
+        value : None
+            Any kind of value to be stored
+        '''
+        setattr(self, label, value)
