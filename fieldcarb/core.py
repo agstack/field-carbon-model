@@ -7,7 +7,7 @@ import numpy as np
 from numbers import Number
 from typing import Sequence
 from fieldcarb import Namespace
-from fieldcarb.utils import linear_constraint
+from fieldcarb.utils import arrhenius, linear_constraint
 
 
 class TCF(object):
@@ -194,7 +194,9 @@ class TCF(object):
         '''
         pass
 
-    def rh_daily(self, drivers: Sequence, state: Sequence = None) -> np.ndarray:
+    def rh_daily(
+            self, drivers: Sequence, state: Sequence = None
+        ) -> np.ndarray:
         '''
         Calculates daily heterotrophic respiration (RH) based on the available
         soil organic carbon (SOC) state and prevailing climatic conditions.
@@ -216,4 +218,5 @@ class TCF(object):
         -------
         numpy.ndarray
         '''
-        pass
+        tsoil, smsf = drivers
+        tmult = arrhenius(tsoil, self.params.tsoil)
