@@ -65,6 +65,8 @@ class TCF(object):
             state: Sequence = None
         ):
         self.params = Namespace()
+        self.params.beta1 = 66.02
+        self.params.beta2 = 227.13
         self.pft = land_cover_map
         self.state = state
         # Each parameter should be accessed, e.g., tcf.params.LUE
@@ -215,7 +217,7 @@ class TCF(object):
         -------
         numpy.ndarray
         '''
-        if hastattr(drivers, 'ndim'):
+        if hasattr(drivers, 'ndim'):
             assert drivers.ndim <= 2
         gpp = self.gpp(drivers)
         npp = self.params.CUE * gpp
@@ -252,7 +254,7 @@ class TCF(object):
         numpy.ndarray
             A (3 x N) array representing the RH flux from each SOC pool
         '''
-        if hastattr(drivers, 'ndim'):
+        if hasattr(drivers, 'ndim'):
             assert drivers.ndim <= 2
         # NOTE: Allowing for state variables other than SOC to be included in
         #   a later version
@@ -261,9 +263,13 @@ class TCF(object):
             soc = self.state
         tsoil, smsf = drivers # Unpack met. drivers
         f_smsf = linear_constraint(self.params.smsf0, self.params.smsf1)
-        tmult = arrhenius(tsoil, self.params.tsoil)
+        tmult = arrhenius(tsoil, self.params.beta0)
         wmult = f_smsf(smsf)
-        rh = self.decay_rates * wmult * tmult * soc
+        rh = []
+        for pool in range(0, soc.shape[0]):
+            rh0 = self.params.decay_rates[pool] * wmult * tmult * soc[pool]
+            rh.append(rh0)
+        rh = np.stack(rh, axis = 0)
         # "the adjustment...to account for material transferred into the slow
         #   pool during humification" (Jones et al. 2017, TGARS, p.5); note
         #   that this is a loss FROM the "medium" (structural) pool
