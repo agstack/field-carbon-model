@@ -53,7 +53,7 @@ class TCF(object):
 
     required_parameters = [
         'LUE', 'tmin0', 'tmin1', 'vpd0', 'vpd1', 'smrz0', 'smrz1', 'ft0',
-        'CUE', 'tsoil', 'smsf0', 'smsf1'
+        'CUE', 'tsoil', 'smsf0', 'smsf1', 'decay_rates'
     ]
     valid_pft = {
         7: 'Cereal Croplands',
@@ -110,9 +110,16 @@ class TCF(object):
         return np.add(
             np.multiply(0.95, np.divide(np.log(smrz_norm * 100), np.log(101))), 0.05)
 
-    def gpp_daily(self, drivers: Sequence) -> np.ndarray:
+    def forward_run(self, drivers: Sequence) -> np.ndarray:
         '''
-        Calculates daily gross primary production (GPP) under prevailing
+        Runs the TCF model forward in time. This is the recommended interface
+        for most users.
+        '''
+        pass
+
+    def gpp(self, drivers: Sequence) -> np.ndarray:
+        '''
+        Calculates gross primary production (GPP) under prevailing climatic
         climatic conditions. Order of driver variables should be:
 
             Fraction of PAR intercepted (fPAR) [0-1]
@@ -126,15 +133,27 @@ class TCF(object):
         provided, FT state will be calculated from Tmin using a threshold
         of 32 degrees F (273.15 deg K).
 
+        Unit of time should be consistent with the units of PAR. For example,
+        if PAR is given as [MJ m-2 day-1], then GPP will be in units of
+        [g C m-2 day-1]. It's assumed the other driver data are representative
+        of that time step (e.g., daily averages). GPP doesn't depend on model
+        state, so it can be estimated for an arbitrary number of time steps.
+
         Parameters
         ----------
         drivers : Sequence or numpy.ndarray
-            Either a 1D sequence of P driver variables or a 3D data cube of
-            shape (P x N x T), for N pixels, and T time steps
+            Either a 1D sequence of P driver variables; a 2D (P x N) array for
+            N pixels, or a 3D data cube of shape (P x N x T) for T time steps
 
         Returns
         -------
         numpy.ndarray
+
+        Returns
+        -------
+        numpy.ndarray
+            Gross primary production (GPP) in [g C m-2 time-1] where time is
+            the time step of the PAR data, e.g., [g c m-2 day-1]
         '''
         if drivers.shape[0] == 5:
             fpar, par, tmin, vpd, smrz0 = drivers
@@ -155,7 +174,7 @@ class TCF(object):
         e_mult = ft * f_tmin(tmin) * f_vpd(vpd) * f_smrz(smrz)
         return par * fpar * e_mult * self.params.LUE
 
-    def nee_daily(
+    def nee(
             self, drivers: Sequence, state: Sequence = None,
             compute_ft: bool = False
         ) -> np.ndarray:
@@ -176,14 +195,18 @@ class TCF(object):
         Even if compute_ft = True, the axis of "drivers" corresponding to FT
         state must be provided; it could be all NaNs.
 
+        Unit of time should be consistent with the units of PAR and the
+        turnover time (`decay_rate`). It's assumed that PAR is denominated
+        by daily time steps, so NEE would be given in [g C m-2 day-1].
+
         Parameters
         ----------
         drivers : Sequence or numpy.ndarray
-            Either a 1D sequence of P driver variables or a 3D data cube of
-            shape (P x N x T), for N pixels, and T time steps
+            Either a 1D sequence of P driver variables or a 2D data cube of
+            shape (P x N), for N pixels
         state : Sequence or numpy.ndarray or None
             A sequence of 3 values or an (3 x N) array representing the
-            initial SOC state in each SOC pool
+            SOC state in each SOC pool
         compute_ft : bool
             If True, the freeze-thaw (FT) state is computed based on Tmin; if
             False, FT must be provided among drivers.
@@ -192,31 +215,57 @@ class TCF(object):
         -------
         numpy.ndarray
         '''
-        pass
+        if hastattr(drivers, 'ndim'):
+            assert drivers.ndim <= 2
+        gpp = self.gpp(drivers)
+        npp = self.params.CUE * gpp
+        # Total the RH flux from each SOC pool
+        rh = self.rh(drivers, state).sum(axis = 0)
+        return rh - npp
 
-    def rh_daily(
+    def rh(
             self, drivers: Sequence, state: Sequence = None
         ) -> np.ndarray:
         '''
-        Calculates daily heterotrophic respiration (RH) based on the available
+        Calculates heterotrophic respiration (RH) based on the available
         soil organic carbon (SOC) state and prevailing climatic conditions.
         Order of driver variables should be:
 
             Soil temperature in the top (0-5 cm) layer [deg K]
             Surface soil moisture wetness, volume proportion [0-1]
 
+        Unit of time should be consistent with the units of PAR and the
+        turnover time (`decay_rate`). It's assumed that PAR is denominated
+        by daily time steps, so RH would be given in [g C m-2 day-1].
+
         Parameters
         ----------
         drivers : Sequence or numpy.ndarray
-            Either a 1D sequence of P driver variables or a 3D data cube of
-            shape (P x N x T), for N pixels, and T time steps
+            Either a 1D sequence of P driver variables or a 2D data cube of
+            shape (P x N), for N pixels
         state : Sequence or numpy.ndarray or None
             A sequence of 3 values or an (3 x N) array representing the
-            initial SOC state in each SOC pool
+            SOC state in each SOC pool
 
         Returns
         -------
         numpy.ndarray
+            A (3 x N) array representing the RH flux from each SOC pool
         '''
-        tsoil, smsf = drivers
+        if hastattr(drivers, 'ndim'):
+            assert drivers.ndim <= 2
+        # NOTE: Allowing for state variables other than SOC to be included in
+        #   a later version
+        soc = state
+        if soc is None:
+            soc = self.state
+        tsoil, smsf = drivers # Unpack met. drivers
+        f_smsf = linear_constraint(self.params.smsf0, self.params.smsf1)
         tmult = arrhenius(tsoil, self.params.tsoil)
+        wmult = f_smsf(smsf)
+        rh = self.decay_rates * wmult * tmult * soc
+        # "the adjustment...to account for material transferred into the slow
+        #   pool during humification" (Jones et al. 2017, TGARS, p.5); note
+        #   that this is a loss FROM the "medium" (structural) pool
+        rh[1,...] = rh[1,...] * (1 - self.params.f_structural)
+        return rh
