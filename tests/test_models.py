@@ -10,7 +10,7 @@ from fieldcarb.models import TCF
 CEREAL_PARAMETERS = {
     'LUE': 1.61, 'tmin0': 257.3, 'tmin1': 285.9, 'vpd0': 150, 'vpd1': 4000,
     'smrz0': 0.1, 'smrz1': 0.3, 'smsf0': 0.0, 'smsf1': 0.25, 'ft0': 0.78,
-    'beta0': 242.47, 'decay_rates': [0.018, 0.0072, 0.000167], 'CUE': 0.708,
+    'tsoil': 242.47, 'decay_rates': [0.018, 0.0072, 0.000167], 'CUE': 0.708,
     'f_structural': 0.5, 'f_metabolic': 0.78
 }
 
@@ -64,7 +64,7 @@ def test_tcf_forward_run_values():
         datetime.date(2023, 1, 1) + datetime.timedelta(days = d)
         for d in range(0, 365)
     ]
-    tcf = TCF(CEREAL_PARAMETERS, 7, soc_state)
+    tcf = TCF(CEREAL_PARAMETERS, [7], soc_state)
     nee, gpp, rh = tcf.forward_run(drivers, dates = dates, verbose = False)
     assert np.equal(
         np.percentile(nee, (1, 10, 50, 90, 99)).round(2),
@@ -88,7 +88,7 @@ def test_tcf_gpp_values():
     Test that the TCF model's GPP calculation is consistent.
     '''
     soc_state, drivers = random_tcf_data_cube(100, 100, seed = 406)
-    tcf = TCF(CEREAL_PARAMETERS, 7, soc_state)
+    tcf = TCF(CEREAL_PARAMETERS, [7], soc_state)
     gpp = tcf.gpp(drivers[0:6]).round(2)
     assert np.median(gpp) == 1.61
     assert np.var(gpp).round(2) == 7.93
@@ -101,7 +101,7 @@ def test_tcf_nee_values():
     Test that the TCF model's NEE calculation is consistent.
     '''
     soc_state, drivers = random_tcf_data_cube(100, 100, seed = 406)
-    tcf = TCF(CEREAL_PARAMETERS, 7, soc_state)
+    tcf = TCF(CEREAL_PARAMETERS, [7], soc_state)
     # Using just one time slice
     nee = tcf.nee(drivers[...,0]).round(2)
     assert np.median(nee) == -0.95
@@ -115,7 +115,7 @@ def test_tcf_rh_values():
     Test that the TCF model's RH calculation is consistent.
     '''
     soc_state, drivers = random_tcf_data_cube(100, 100, seed = 406)
-    tcf = TCF(CEREAL_PARAMETERS, 7, soc_state)
+    tcf = TCF(CEREAL_PARAMETERS, [7], soc_state)
     # Using just one time slice
     rh = tcf.rh(drivers[-2:][...,0]).sum(axis = 0).round(2)
     assert np.median(rh) == 0.56

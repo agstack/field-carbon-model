@@ -91,19 +91,14 @@ class TCF(object):
         self.constants.add('litterfall', litterfall)
         self.state = Namespace()
         self.params = Namespace()
-        self.params.beta1 = 66.02
-        self.params.beta2 = 227.13
         self.pft = land_cover_map
-        if hasattr(state, 'ndim'):
-            assert state.ndim <= 2, '"state" should have at most 2 dimensions'
-        else:
+        if state is not None:
+            if hasattr(state, 'ndim'):
+                assert state.ndim <= 2, '"state" should have at most 2 dimensions'
             # "state" either begins as or is converted to a numpy.ndarray
-            state = np.array(state)
-        if state.ndim == 2:
-            self.state.add('soc', state.astype(np.float32))
-        else:
+            state = np.array(state, dtype = np.float32)
             assert len(state) == 3, 'Expected one "state" value for each SOC pool'
-            self.state.add('soc', np.array(state, dtype = np.float32))
+            self.state.add('soc', np.array(state))
         # Each parameter should be accessed, e.g., tcf.params.LUE
         for key, value in params.items():
             self.params.add(key, value)
@@ -222,7 +217,7 @@ class TCF(object):
         tsoil, smsf = drivers[-2:]
         f_smsf = linear_constraint(self.params.smsf0, self.params.smsf1)
         # Swap axes here only to make time the major (first) axis
-        tmult = arrhenius(tsoil, self.params.beta0).swapaxes(0, 1)
+        tmult = arrhenius(tsoil, self.params.tsoil).swapaxes(0, 1)
         wmult = f_smsf(smsf).swapaxes(0, 1)
         # Forward time steps
         steps = range(0, drivers.shape[-1])
@@ -394,7 +389,7 @@ class TCF(object):
             soc = self.state.soc
         tsoil, smsf = drivers # Unpack met. drivers
         f_smsf = linear_constraint(self.params.smsf0, self.params.smsf1)
-        tmult = arrhenius(tsoil, self.params.beta0)
+        tmult = arrhenius(tsoil, self.params.tsoil)
         wmult = f_smsf(smsf)
         rh = []
         for pool in range(0, soc.shape[0]):
