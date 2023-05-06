@@ -219,10 +219,10 @@ class TCF(object):
         '''
         if hasattr(drivers, 'ndim'):
             assert drivers.ndim <= 2
-        gpp = self.gpp(drivers)
+        gpp = self.gpp(drivers[0:6])
         npp = self.params.CUE * gpp
         # Total the RH flux from each SOC pool
-        rh = self.rh(drivers, state).sum(axis = 0)
+        rh = self.rh(drivers[-2:], state).sum(axis = 0)
         return rh - npp
 
     def rh(
