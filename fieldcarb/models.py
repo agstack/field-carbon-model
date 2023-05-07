@@ -61,7 +61,8 @@ class TCF(object):
         values as there are keys in `TCF.valid_pft`
     land_cover_map : Sequence or numpy.ndarray
         1-dimensional sequence of one or more land-cover types, one for each
-        model resolution cell (pixel)
+        model resolution cell (pixel). These types should be represented as
+        integers (unsigned 16-bit type or lower).
     state : Sequence or numpy.ndarray or None
         A sequence of 3 values or a 2D (S x N) array representing the state
         variables for each of N pixels. The first three (3) state variables
@@ -91,7 +92,7 @@ class TCF(object):
         self.constants.add('litterfall', litterfall)
         self.state = Namespace()
         self.params = Namespace()
-        self.pft = land_cover_map
+        self.pft = np.array(land_cover_map, dtype = np.uint16)
         if state is not None:
             if hasattr(state, 'ndim'):
                 assert state.ndim <= 2, '"state" should have at most 2 dimensions'
@@ -101,7 +102,19 @@ class TCF(object):
             self.state.add('soc', np.array(state))
         # Each parameter should be accessed, e.g., tcf.params.LUE
         for key, value in params.items():
-            self.params.add(key, value)
+            if key not in self.required_parameters:
+                continue
+            # Create a parameters vector; e.g., for a land-cover map:
+            #   array([  1,   2,   1,   3])
+            # We create an array of parameters:
+            #   array([1.5, 3.0, 1.5, 1.0])
+            # Where the unique parameter for each land-cover class is copied
+            #   as many times as that class appears; result is an array
+            #   that is the same shape and size as the land-cover array
+            p_vector = value[:,self.pft]
+            if p_vector.shape[0] == 1:
+                p_vector = p_vector.swapaxes(0, 1)
+            self.params.add(key, p_vector)
 
     def _rescale_smrz(self, smrz0, smrz_min, smrz_max = 1):
         r'''
