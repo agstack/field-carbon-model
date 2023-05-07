@@ -113,6 +113,7 @@ class TCF(object):
             #   that is the same shape and size as the land-cover array
             p_vector = value[:,self.pft]
             if p_vector.shape[0] == 1:
+                # Add a trailing axis for compatibility with (N x T) arrays
                 p_vector = p_vector.swapaxes(0, 1)
             self.params.add(key, p_vector)
 
@@ -351,7 +352,8 @@ class TCF(object):
             the time step of the PAR data, e.g., [g c m-2 day-1]
         '''
         if hasattr(drivers, 'ndim'):
-            assert drivers.ndim <= 2
+            assert drivers.ndim <= 2,\
+                'TCF.nee() computes a single time step; only (P x N) driver arrays should be provided'
         # NOTE: Allowing for state variables other than SOC to be included in
         #   a later version
         soc = state
@@ -394,7 +396,8 @@ class TCF(object):
             units of [g C m-2] per unit time, most likely [g C m-2 day-1]
         '''
         if hasattr(drivers, 'ndim'):
-            assert drivers.ndim <= 2
+            assert drivers.ndim <= 2,\
+                'TCF.rh() computes a single time step; only (P x N) driver arrays should be provided'
         # NOTE: Allowing for state variables other than SOC to be included in
         #   a later version
         soc = state
