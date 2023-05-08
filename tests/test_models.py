@@ -1,5 +1,5 @@
 '''
-Test suite for core models.
+Integration test suite for core models.
 '''
 
 import datetime
@@ -70,7 +70,8 @@ def test_tcf_forward_run_values():
         datetime.date(2023, 1, 1) + datetime.timedelta(days = d)
         for d in range(0, 365)
     ]
-    tcf = TCF(CEREAL_PARAMETERS, state = soc_state)
+    pft = [0] * 10
+    tcf = TCF(CEREAL_PARAMETERS, pft, state = soc_state)
     nee, gpp, rh = tcf.forward_run(drivers, dates = dates, verbose = False)
     assert np.equal(
         np.percentile(nee, (1, 10, 50, 90, 99)).round(2),
@@ -94,18 +95,61 @@ def test_tcf_gpp_values_1d():
     Test that the TCF model's GPP calculation is consistent for a single
     site/ land-cover type.
     '''
-    soc_state, drivers = random_tcf_data_cube(100, 100, seed = 406)
-    tcf = TCF(CEREAL_PARAMETERS, state = soc_state)
+    soc_state, drivers = random_tcf_data_cube(100, 365, seed = 406)
+    pft = [0] * 100
+    tcf = TCF(CEREAL_PARAMETERS, pft, state = soc_state)
     gpp = tcf.gpp(drivers[0:6]).round(2)
-    assert np.median(gpp) == 1.61
-    assert np.var(gpp).round(2) == 7.93
+    assert gpp.shape == (100, 365)
+    assert np.median(gpp) == 1.63
+    assert np.var(gpp).round(2) == 7.94
     assert gpp.min() == 0.0
-    assert gpp.max() == 24.92
+    assert gpp.max() == 26.39
 
 
 def test_tcf_gpp_values_2d():
     '''
     Test that the TCF model's GPP calculation is consistent for multiple
+    sites/ land-cover types.
+    '''
+    soc_state, drivers = random_tcf_data_cube(100, 365, seed = 406)
+    # NOTE: Using 0 and 1 for the land-cover types for convenience
+    pft = np.random.choice([0, 1], size = 100)
+    params = dict(
+        zip(CEREAL_PARAMETERS.keys(),
+        zip(CEREAL_PARAMETERS.values(), BROADLEAF_PARAMETERS.values())))
+    tcf = TCF(params, pft, soc_state)
+    gpp = tcf.gpp(drivers[0:6]).round(2)
+    assert gpp.shape == (100, 365)
+    assert np.median(gpp[pft == 0]).round(2) == 1.64
+    assert np.var(gpp[pft == 0]).round(2) == 7.92
+    assert gpp[pft == 0].min() == 0.0
+    assert gpp[pft == 0].max() == 26.39
+    assert np.median(gpp[pft == 1]) == 1.58
+    assert np.var(gpp[pft == 1]).round(2) == 11.41
+    assert gpp[pft == 1].min() == 0.0
+    assert gpp[pft == 1].max() == 31.7
+
+
+def test_tcf_rh_values_1d():
+    '''
+    Test that the TCF model's RH calculation is consistent for a single
+    site/ land-cover type.
+    '''
+    soc_state, drivers = random_tcf_data_cube(100, 365, seed = 406)
+    pft = [0] * 100
+    tcf = TCF(CEREAL_PARAMETERS, pft, state = soc_state)
+    # Using just one time slice
+    rh = tcf.rh(drivers[-2:][...,0]).sum(axis = 0).round(2)
+    assert rh.shape == (100,)
+    assert np.median(rh).round(2) == 0.57
+    assert np.var(rh).round(2) == 0.28
+    assert rh.min() == 0.0
+    assert rh.max() == 2.08
+
+
+def test_tcf_rh_values_2d():
+    '''
+    Test that the TCF model's RH calculation is consistent for multiple
     sites/ land-cover types.
     '''
     soc_state, drivers = random_tcf_data_cube(100, 50, seed = 406)
@@ -115,41 +159,10 @@ def test_tcf_gpp_values_2d():
         zip(CEREAL_PARAMETERS.keys(),
         zip(CEREAL_PARAMETERS.values(), BROADLEAF_PARAMETERS.values())))
     tcf = TCF(params, pft, soc_state)
-    gpp = tcf.gpp(drivers[0:6]).round(2)
-    assert gpp.shape == (100, 50)
-    assert np.median(gpp[pft == 0]).round(2) == 1.52
-    assert np.var(gpp[pft == 0]).round(2) == 7.56
-    assert gpp[pft == 0].min() == 0.0
-    assert gpp[pft == 0].max() == 24.71
-    assert np.median(gpp[pft == 1]) == 1.46
-    assert np.var(gpp[pft == 1]).round(2) == 11.13
-    assert gpp[pft == 1].min() == 0.0
-    assert gpp[pft == 1].max() == 27.82
-
-
-def test_tcf_nee_values():
-    '''
-    Test that the TCF model's NEE calculation is consistent.
-    '''
-    soc_state, drivers = random_tcf_data_cube(100, 100, seed = 406)
-    tcf = TCF(CEREAL_PARAMETERS, state = soc_state)
-    # Using just one time slice
-    nee = tcf.nee(drivers[...,0]).round(2)
-    assert np.median(nee) == -0.95
-    assert np.var(nee).round(2) == 4.42
-    assert nee.min() == -8.32
-    assert nee.max() == 1.77
-
-
-def test_tcf_rh_values():
-    '''
-    Test that the TCF model's RH calculation is consistent.
-    '''
-    soc_state, drivers = random_tcf_data_cube(100, 100, seed = 406)
-    tcf = TCF(CEREAL_PARAMETERS, state = soc_state)
     # Using just one time slice
     rh = tcf.rh(drivers[-2:][...,0]).sum(axis = 0).round(2)
-    assert np.median(rh) == 0.56
-    assert np.var(rh).round(2) == 0.21
+    assert rh.shape == (100,)
+    assert np.median(rh).round(2) == 0.68
+    assert np.var(rh).round(2) == 0.40
     assert rh.min() == 0.0
-    assert rh.max() == 1.77
+    assert rh.max() == 2.94

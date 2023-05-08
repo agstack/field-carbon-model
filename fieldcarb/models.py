@@ -59,7 +59,7 @@ class TCF(object):
         `TCF.required_parameters` and values should be sequences ordered by
         PFT code, either 9 values (value at index 0 being `np.nan`) or as many
         values as there are keys in `TCF.valid_pft`
-    land_cover_map : Sequence or numpy.ndarray or None
+    land_cover_map : Sequence or numpy.ndarray
         1-dimensional sequence of one or more land-cover types, one for each
         model resolution cell (pixel). These types should be represented as
         integers (unsigned 16-bit type or lower).
@@ -83,14 +83,12 @@ class TCF(object):
     }
 
     def __init__(
-            self, params: dict, land_cover_map: Sequence = None,
+            self, params: dict, land_cover_map: Sequence,
             state: Sequence = None, litterfall: Sequence = None
         ):
         self.constants = Namespace()
         self.state = Namespace()
         self.params = Namespace() # Parameters accessed, e.g., tcf.params.LUE
-        if land_cover_map is None:
-            land_cover_map = [0]
         self.pft = np.array(land_cover_map, dtype = np.uint16)
         # Load mean daily litterfall rates
         if litterfall is not None:
@@ -123,7 +121,8 @@ class TCF(object):
             # Copy parameter values based on PFT map
             if key == 'decay_rates':
                 if p_vector.shape == (3,):
-                    p_vector = p_vector[:,np.newaxis]
+                    p_vector = p_vector[:,np.newaxis]\
+                        .repeat(self.pft.size, axis = -1)
                 elif hasattr(value, 'count') and p_vector.ndim == 2:
                     # i.e., "value" was nested lists and result of converting
                     #   to a NumPy array was a (N x 3) array
@@ -133,16 +132,17 @@ class TCF(object):
                 assert p_vector.shape == (3, self.pft.size)
             else:
                 if p_vector.ndim == 0:
-                    p_vector = p_vector.reshape((1,1))
+                    p_vector = p_vector[np.newaxis][np.newaxis]\
+                        .repeat(self.pft.size, axis = 0)
                 elif p_vector.ndim == 1:
                     p_vector = p_vector.ravel()[self.pft]\
                         .reshape((self.pft.size, 1))
                 elif p_vector.ndim == 2:
                     p_vector = p_vector[:,self.pft].swapaxes(0, 1)
             # Result should be a 2D vectorized parameter array, either:
-            #   (1 x N) or (S x N), where S is, e.g., each SOC pool
+            #   (N x 1) or (S x N), where S is, e.g., each SOC pool
             assert p_vector.ndim == 2
-            assert p_vector.shape[-1] == 1 or p_vector.shape[-1] == self.pft.size
+            assert p_vector.shape[0] == self.pft.size or p_vector.shape[0] == 3
             self.params.add(key, p_vector)
 
     def _rescale_smrz(self, smrz0, smrz_min, smrz_max = 1):
@@ -336,64 +336,6 @@ class TCF(object):
         e_mult = ft * f_tmin(tmin) * f_vpd(vpd) * f_smrz(smrz)
         return par * fpar * e_mult * self.params.LUE
 
-    def nee(
-            self, drivers: Sequence, state: Sequence = None,
-            compute_ft: bool = False
-        ) -> np.ndarray:
-        '''
-        Calculates the net ecosystem CO2 exchange (NEE) based on the available
-        soil organic carbon (SOC) state and prevailing climatic conditions.
-        This calculation is NOT vectorized, so can only be applied to a single
-        time point. Order of driver variables should be:
-
-            Fraction of PAR intercepted (fPAR) [0-1]
-            Photosynthetically active radation (PAR) [MJ m-2 day-1]
-            Minimum temperature (Tmin) [deg K]
-            Vapor pressure deficit (VPD) [Pa]
-            Root-zone soil moisture wetness, volume proportion [0-1]
-            Freeze-thaw (FT) state of soil [0 = Frozen, 1 = Thawed]
-            Soil temperature in the top (0-5 cm) layer [deg K]
-            Surface soil moisture wetness, volume proportion [0-1]
-
-        Even if compute_ft = True, the axis of "drivers" corresponding to FT
-        state must be provided; it could be all NaNs.
-
-        Unit of time should be consistent with the units of PAR and the
-        turnover time (`decay_rate`). It's assumed that PAR is denominated
-        by daily time steps, so NEE would be given in [g C m-2 day-1].
-
-        Parameters
-        ----------
-        drivers : Sequence or numpy.ndarray
-            Either a 1D sequence of P driver variables or a 2D data cube of
-            shape (P x N), for N pixels
-        state : Sequence or numpy.ndarray or None
-            A sequence of 3 values or an (3 x N) array representing the
-            SOC state in each SOC pool
-        compute_ft : bool
-            If True, the freeze-thaw (FT) state is computed based on Tmin; if
-            False, FT must be provided among drivers.
-
-        Returns
-        -------
-        numpy.ndarray
-            Net ecosystem exchange (NEE) in [g C m-2 time-1] where time is
-            the time step of the PAR data, e.g., [g c m-2 day-1]
-        '''
-        if hasattr(drivers, 'ndim'):
-            assert drivers.ndim <= 2,\
-                'TCF.nee() computes a single time step; only (P x N) driver arrays should be provided'
-        # NOTE: Allowing for state variables other than SOC to be included in
-        #   a later version
-        soc = state
-        if soc is None:
-            soc = self.state.soc
-        gpp = self.gpp(drivers[0:6])
-        npp = self.params.CUE * gpp
-        # Total the RH flux from each SOC pool
-        rh = self.rh(drivers[-2:], state).sum(axis = 0)
-        return rh - npp
-
     def rh(
             self, drivers: Sequence, state: Sequence = None
         ) -> np.ndarray:
@@ -434,6 +376,8 @@ class TCF(object):
         if soc is None:
             soc = self.state.soc
         tsoil, smsf = drivers # Unpack met. drivers
+        # Take transpose of parameter vectors here because the driver datasets
+        #   are cross-sectional; i.e., smsf and tsoil are 1D vectors
         f_smsf = linear_constraint(self.params.smsf0.T, self.params.smsf1.T)
         tmult = arrhenius(tsoil, self.params.tsoil.T)
         wmult = f_smsf(smsf)
