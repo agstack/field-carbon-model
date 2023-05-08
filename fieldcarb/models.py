@@ -59,7 +59,7 @@ class TCF(object):
         `TCF.required_parameters` and values should be sequences ordered by
         PFT code, either 9 values (value at index 0 being `np.nan`) or as many
         values as there are keys in `TCF.valid_pft`
-    land_cover_map : Sequence or numpy.ndarray
+    land_cover_map : Sequence or numpy.ndarray or None
         1-dimensional sequence of one or more land-cover types, one for each
         model resolution cell (pixel). These types should be represented as
         integers (unsigned 16-bit type or lower).
@@ -83,12 +83,14 @@ class TCF(object):
     }
 
     def __init__(
-            self, params: dict, land_cover_map: Sequence,
+            self, params: dict, land_cover_map: Sequence = None,
             state: Sequence = None, litterfall: Sequence = None
         ):
         self.constants = Namespace()
         self.state = Namespace()
         self.params = Namespace() # Parameters accessed, e.g., tcf.params.LUE
+        if land_cover_map is None:
+            land_cover_map = [0]
         self.pft = np.array(land_cover_map, dtype = np.uint16)
         # Load mean daily litterfall rates
         if litterfall is not None:
@@ -109,19 +111,38 @@ class TCF(object):
         # Where the unique parameter for each land-cover class is copied as
         #   many times as that class appears; result is an array that is the
         #   same shape and size as the land-cover array
+        # Possible items of the parameters dictionary include, e.g.:
+        # {"key": 3.14}
+        # {"key": [3.14, 1.10]}
+        # {"key": np.array([3.14, 1.10])}
+        # {"key": np.array([[3.14, 1.10], [...], ...])}
         for key, value in params.items():
             if key not in self.required_parameters:
                 continue
-            try:
-                p_vector = value[:,self.pft]
-            except TypeError:
-                p_vector = np.array([value])
+            p_vector = np.array(value)
+            # Copy parameter values based on PFT map
             if key == 'decay_rates':
-                if p_vector.shape == (1, 3):
-                    p_vector = p_vector.reshape((3, 1))
-            elif p_vector.ndim == 2 and p_vector.shape[0] == 1:
-                # Reshape for compatibility with (N x T) arrays
-                p_vector = p_vector.swapaxes(0, 1)
+                if p_vector.shape == (3,):
+                    p_vector = p_vector[:,np.newaxis]
+                elif hasattr(value, 'count') and p_vector.ndim == 2:
+                    # i.e., "value" was nested lists and result of converting
+                    #   to a NumPy array was a (N x 3) array
+                    p_vector = p_vector.swapaxes(0, 1)[:,self.pft]
+                elif p_vector.ndim == 2:
+                    p_vector = p_vector[:,self.pft]
+                assert p_vector.shape == (3, self.pft.size)
+            else:
+                if p_vector.ndim == 0:
+                    p_vector = p_vector.reshape((1,1))
+                elif p_vector.ndim == 1:
+                    p_vector = p_vector.ravel()[self.pft]\
+                        .reshape((self.pft.size, 1))
+                elif p_vector.ndim == 2:
+                    p_vector = p_vector[:,self.pft].swapaxes(0, 1)
+            # Result should be a 2D vectorized parameter array, either:
+            #   (1 x N) or (S x N), where S is, e.g., each SOC pool
+            assert p_vector.ndim == 2
+            assert p_vector.shape[-1] == 1 or p_vector.shape[-1] == self.pft.size
             self.params.add(key, p_vector)
 
     def _rescale_smrz(self, smrz0, smrz_min, smrz_max = 1):
@@ -252,7 +273,7 @@ class TCF(object):
             dc2 = (litter * (1 - self.params.f_metabolic)) - rh_t[1,...]
             dc3 = (self.params.f_structural * rh_t[1,...]) - rh_t[2,...]
             for i, delta in enumerate([dc1, dc2, dc3]):
-                soc[i] += delta
+                soc[i] += delta[0]
             # "the adjustment...to account for material transferred into the slow
             #   pool during humification" (Jones et al. 2017, TGARS, p.5); note
             #   that this is a loss FROM the "medium" (structural) pool
@@ -322,7 +343,8 @@ class TCF(object):
         '''
         Calculates the net ecosystem CO2 exchange (NEE) based on the available
         soil organic carbon (SOC) state and prevailing climatic conditions.
-        Order of driver variables should be:
+        This calculation is NOT vectorized, so can only be applied to a single
+        time point. Order of driver variables should be:
 
             Fraction of PAR intercepted (fPAR) [0-1]
             Photosynthetically active radation (PAR) [MJ m-2 day-1]
@@ -378,7 +400,8 @@ class TCF(object):
         '''
         Calculates heterotrophic respiration (RH) based on the available
         soil organic carbon (SOC) state and prevailing climatic conditions.
-        Order of driver variables should be:
+        This calculation is NOT vectorized, so can only be applied to a single
+        time point. Order of driver variables should be:
 
             Soil temperature in the top (0-5 cm) layer [deg K]
             Surface soil moisture wetness, volume proportion [0-1]
