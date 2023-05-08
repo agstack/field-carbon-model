@@ -46,6 +46,13 @@ class TCF(object):
     - Initial state of "structural" SOC pool
     - Initial state of "recalcitrant" SOC pool
 
+    NOTE: For developers, `self.params` refers to model parameters that have
+    been vectorized to improve performance. If a function performs
+    vectorized calculations on longitudinal (N x T) arrays, the vectorized
+    parameter(s) can be used with their current shape. For cross-sectional
+    calculations, e.g., on (N,) or (1 x N) arrays, make sure to use the
+    transpose, `self.params.name.T`, where `name` is the parameter name.
+
     Example use for a single pixel:
 
         tcf = TCF(land_cover_map = [7])
@@ -269,15 +276,15 @@ class TCF(object):
                 rh_t[pool] = self.params.decay_rates[pool] *\
                     wmult[t] * tmult[t] * soc[pool]
             # Compute SOC change
-            dc1 = (litter * self.params.f_metabolic) - rh_t[0,...]
-            dc2 = (litter * (1 - self.params.f_metabolic)) - rh_t[1,...]
-            dc3 = (self.params.f_structural * rh_t[1,...]) - rh_t[2,...]
+            dc1 = (litter * self.params.f_metabolic.T) - rh_t[0,...]
+            dc2 = (litter * (1 - self.params.f_metabolic.T)) - rh_t[1,...]
+            dc3 = (self.params.f_structural.T * rh_t[1,...]) - rh_t[2,...]
             for i, delta in enumerate([dc1, dc2, dc3]):
                 soc[i] += delta[0]
             # "the adjustment...to account for material transferred into the slow
             #   pool during humification" (Jones et al. 2017, TGARS, p.5); note
             #   that this is a loss FROM the "medium" (structural) pool
-            rh_t[1,...] = rh_t[1,...] * (1 - self.params.f_structural)
+            rh_t[1,...] = rh_t[1,...] * (1 - self.params.f_structural.T)
             # Record RH and NEE at this time step
             rh[...,t] = rh_t
             nee[...,t] = rh_t.sum(axis = 0) - npp[...,t]
