@@ -87,12 +87,14 @@ class TCF(object):
             state: Sequence = None, litterfall: Sequence = None
         ):
         self.constants = Namespace()
+        self.state = Namespace()
+        self.params = Namespace() # Parameters accessed, e.g., tcf.params.LUE
+        self.pft = np.array(land_cover_map, dtype = np.uint16)
+        # Load mean daily litterfall rates
         if litterfall is not None:
             litterfall = np.array(litterfall, dtype = np.float32)
         self.constants.add('litterfall', litterfall)
-        self.state = Namespace()
-        self.params = Namespace()
-        self.pft = np.array(land_cover_map, dtype = np.uint16)
+        # Load soil organic carbon (SOC) state
         if state is not None:
             if hasattr(state, 'ndim'):
                 assert state.ndim <= 2, '"state" should have at most 2 dimensions'
@@ -100,20 +102,25 @@ class TCF(object):
             state = np.array(state, dtype = np.float32)
             assert len(state) == 3, 'Expected one "state" value for each SOC pool'
             self.state.add('soc', np.array(state))
-        # Each parameter should be accessed, e.g., tcf.params.LUE
+        # Create a parameters vector; e.g., for a land-cover map:
+        #   array([  1,   2,   1,   3])
+        # We create an array of parameters:
+        #   array([1.5, 3.0, 1.5, 1.0])
+        # Where the unique parameter for each land-cover class is copied as
+        #   many times as that class appears; result is an array that is the
+        #   same shape and size as the land-cover array
         for key, value in params.items():
             if key not in self.required_parameters:
                 continue
-            # Create a parameters vector; e.g., for a land-cover map:
-            #   array([  1,   2,   1,   3])
-            # We create an array of parameters:
-            #   array([1.5, 3.0, 1.5, 1.0])
-            # Where the unique parameter for each land-cover class is copied
-            #   as many times as that class appears; result is an array
-            #   that is the same shape and size as the land-cover array
-            p_vector = value[:,self.pft]
-            if p_vector.shape[0] == 1:
-                # Add a trailing axis for compatibility with (N x T) arrays
+            try:
+                p_vector = value[:,self.pft]
+            except TypeError:
+                p_vector = np.array([value])
+            if key == 'decay_rates':
+                if p_vector.shape == (1, 3):
+                    p_vector = p_vector.reshape((3, 1))
+            elif p_vector.ndim == 2 and p_vector.shape[0] == 1:
+                # Reshape for compatibility with (N x T) arrays
                 p_vector = p_vector.swapaxes(0, 1)
             self.params.add(key, p_vector)
 
@@ -404,16 +411,12 @@ class TCF(object):
         if soc is None:
             soc = self.state.soc
         tsoil, smsf = drivers # Unpack met. drivers
-        f_smsf = linear_constraint(self.params.smsf0, self.params.smsf1)
-        tmult = arrhenius(tsoil, self.params.tsoil)
+        f_smsf = linear_constraint(self.params.smsf0.T, self.params.smsf1.T)
+        tmult = arrhenius(tsoil, self.params.tsoil.T)
         wmult = f_smsf(smsf)
-        rh = []
-        for pool in range(0, soc.shape[0]):
-            rh0 = self.params.decay_rates[pool] * wmult * tmult * soc[pool]
-            rh.append(rh0)
-        rh = np.stack(rh, axis = 0)
+        rh = wmult * tmult * self.params.decay_rates * soc
         # "the adjustment...to account for material transferred into the slow
         #   pool during humification" (Jones et al. 2017, TGARS, p.5); note
         #   that this is a loss FROM the "medium" (structural) pool
-        rh[1,...] = rh[1,...] * (1 - self.params.f_structural)
+        rh[1,...] = rh[1,...] * (1 - self.params.f_structural.T)
         return rh
