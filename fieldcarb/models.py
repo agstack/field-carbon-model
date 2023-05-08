@@ -111,10 +111,15 @@ class TCF(object):
             # Where the unique parameter for each land-cover class is copied
             #   as many times as that class appears; result is an array
             #   that is the same shape and size as the land-cover array
-            p_vector = value[:,self.pft]
+            try:
+                p_vector = np.array(list(value))
+            except TypeError:
+                # If "value" is a numeric literal
+                p_vector = np.array([value])
+            if p_vector.ndim > 1:
+                p_vector = value[:,self.pft]
             if p_vector.shape[0] == 1:
-                # Add a trailing axis for compatibility with (N x T) arrays
-                p_vector = p_vector.swapaxes(0, 1)
+                p_vector = p_vector.ravel()
             self.params.add(key, p_vector)
 
     def _rescale_smrz(self, smrz0, smrz_min, smrz_max = 1):
@@ -407,13 +412,9 @@ class TCF(object):
         f_smsf = linear_constraint(self.params.smsf0, self.params.smsf1)
         tmult = arrhenius(tsoil, self.params.tsoil)
         wmult = f_smsf(smsf)
-        rh = []
-        for pool in range(0, soc.shape[0]):
-            rh0 = self.params.decay_rates[pool] * wmult * tmult * soc[pool]
-            rh.append(rh0)
-        rh = np.stack(rh, axis = 0)
+        rh = wmult[:,None] * tmult[:,None] * self.params.decay_rates * soc.T
         # "the adjustment...to account for material transferred into the slow
         #   pool during humification" (Jones et al. 2017, TGARS, p.5); note
         #   that this is a loss FROM the "medium" (structural) pool
-        rh[1,...] = rh[1,...] * (1 - self.params.f_structural)
-        return rh
+        rh.T[1,...] = rh.T[1,...] * (1 - self.params.f_structural)
+        return rh.T
