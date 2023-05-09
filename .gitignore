@@ -2,3 +2,6 @@ virtualenv.sh
 lib/python/build
 *.egg-info/
 __pycache__
+
+notebooks/.ipynb_checkpoints/
+notebooks/assets
