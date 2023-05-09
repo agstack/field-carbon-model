@@ -96,7 +96,7 @@ class TCF(object):
         self.constants = Namespace()
         self.state = Namespace()
         self.params = Namespace() # Parameters accessed, e.g., tcf.params.LUE
-        self.pft = np.array(land_cover_map, dtype = np.uint16)
+        self.lc_map = np.array(land_cover_map, dtype = np.uint16)
         # Load mean daily litterfall rates
         if litterfall is not None:
             litterfall = np.array(litterfall, dtype = np.float32)
@@ -129,27 +129,27 @@ class TCF(object):
             if key == 'decay_rates':
                 if p_vector.shape == (3,):
                     p_vector = p_vector[:,np.newaxis]\
-                        .repeat(self.pft.size, axis = -1)
+                        .repeat(self.lc_map.size, axis = -1)
                 elif hasattr(value, 'count') and p_vector.ndim == 2:
                     # i.e., "value" was nested lists and result of converting
                     #   to a NumPy array was a (N x 3) array
-                    p_vector = p_vector.swapaxes(0, 1)[:,self.pft]
+                    p_vector = p_vector.swapaxes(0, 1)[:,self.lc_map]
                 elif p_vector.ndim == 2:
-                    p_vector = p_vector[:,self.pft]
-                assert p_vector.shape == (3, self.pft.size)
+                    p_vector = p_vector[:,self.lc_map]
+                assert p_vector.shape == (3, self.lc_map.size)
             else:
                 if p_vector.ndim == 0:
                     p_vector = p_vector[np.newaxis][np.newaxis]\
-                        .repeat(self.pft.size, axis = 0)
+                        .repeat(self.lc_map.size, axis = 0)
                 elif p_vector.ndim == 1:
-                    p_vector = p_vector.ravel()[self.pft]\
-                        .reshape((self.pft.size, 1))
+                    p_vector = p_vector.ravel()[self.lc_map]\
+                        .reshape((self.lc_map.size, 1))
                 elif p_vector.ndim == 2:
-                    p_vector = p_vector[:,self.pft].swapaxes(0, 1)
+                    p_vector = p_vector[:,self.lc_map].swapaxes(0, 1)
             # Result should be a 2D vectorized parameter array, either:
             #   (N x 1) or (S x N), where S is, e.g., each SOC pool
             assert p_vector.ndim == 2
-            assert p_vector.shape[0] == self.pft.size or p_vector.shape[0] == 3
+            assert p_vector.shape[0] == self.lc_map.size or p_vector.shape[0] == 3
             self.params.add(key, p_vector)
 
     def _rescale_smrz(self, smrz0, smrz_min, smrz_max = 1):
@@ -193,6 +193,36 @@ class TCF(object):
         #   5.0 and 100% saturation)
         return np.add(
             np.multiply(0.95, np.divide(np.log(smrz_norm * 100), np.log(101))), 0.05)
+
+    def _setup_forward(
+            self, drivers: Sequence, state: Sequence = None,
+            dates: Sequence = None
+        ) -> np.ndarray:
+        'Pre-computes some vectorized quantities prior to forward run'
+        litter = self.constants.litterfall
+        if litter is None:
+            assert dates is not None,\
+                'Either: "litterfall" must be provided to TCF() or "dates" must be provided at runtime'
+            assert len(dates) >= 365 and drivers.shape[-1] >= 365,\
+                'At least 365 daily time steps must be provided to allow computation of annual NPP sum'
+            assert hasattr(dates[0], 'year') and hasattr(dates[0], 'strftime'),\
+                'The values of "dates" must be datetime.date or datetime.datetime instances'
+        # GPP can be computed matrix-wise, in a single time step
+        gpp = self.gpp(drivers[0:6])
+        npp = self.params.CUE * gpp
+        # Compute litterfall from the mean annual NPP sum
+        if litter is None:
+            npp_sum = climatology365(gpp.swapaxes(0, 1), dates).sum(axis = 0)
+            # Litterfall is equal daily fraction of average annual NPP
+            litter = npp_sum / 365
+            self.constants.add('litterfall', litter)
+        # Pre-compute environmental constraints for soil RH
+        tsoil, smsf = drivers[-2:]
+        f_smsf = linear_constraint(self.params.smsf0, self.params.smsf1)
+        # Swap axes here only to make time the major (first) axis
+        tmult = arrhenius(tsoil, self.params.tsoil).swapaxes(0, 1)
+        wmult = f_smsf(smsf).swapaxes(0, 1)
+        return (gpp, npp, litter, tmult, wmult)
 
     def forward_run(
             self, drivers: Sequence, state: Sequence = None,
@@ -242,32 +272,10 @@ class TCF(object):
         soc = state
         if soc is None:
             soc = self.state.soc
-        litter = self.constants.litterfall
-        if litter is None:
-            assert dates is not None,\
-                'Either: "litterfall" must be provided to TCF() or "dates" must be provided to TCF.forward_run()'
-            assert len(dates) >= 365 and drivers.shape[-1] >= 365,\
-                'At least 365 daily time steps must be provided to allow computation of annual NPP sum'
-            assert hasattr(dates[0], 'year') and hasattr(dates[0], 'strftime'),\
-                'The values of "dates" must be datetime.date or datetime.datetime instances'
-        # GPP can be computed matrix-wise, in a single time step
-        gpp = self.gpp(drivers[0:6])
-        npp = self.params.CUE * gpp
-        # Compute litterfall from the mean annual NPP sum
-        if litter is None:
-            npp_sum = climatology365(gpp.swapaxes(0, 1), dates).sum(axis = 0)
-            # Litterfall is equal daily fraction of average annual NPP
-            litter = npp_sum / 365
-            self.constants.add('litterfall', litter)
+        gpp, npp, litter, tmult, wmult = self._setup_forward(drivers, state, dates)
         # Pre-allocate output arrays
         rh = np.ones((3, *gpp.shape), dtype = np.float32) # (3 x N x T)
         nee = np.ones((*gpp.shape,), dtype = np.float32) # (N x T)
-        # Pre-compute environmental constraints for soil RH
-        tsoil, smsf = drivers[-2:]
-        f_smsf = linear_constraint(self.params.smsf0, self.params.smsf1)
-        # Swap axes here only to make time the major (first) axis
-        tmult = arrhenius(tsoil, self.params.tsoil).swapaxes(0, 1)
-        wmult = f_smsf(smsf).swapaxes(0, 1)
         # Forward time steps
         steps = range(0, drivers.shape[-1])
         for t in tqdm(steps, disable = not verbose):
@@ -394,3 +402,67 @@ class TCF(object):
         #   that this is a loss FROM the "medium" (structural) pool
         rh[1,...] = rh[1,...] * (1 - self.params.f_structural.T)
         return rh
+
+    def spin_up(
+            self, drivers: Sequence, state: Sequence = None,
+            dates: Sequence = None, max_steps: int = 100, threshold: float = 1,
+            verbose: bool = True, verbose_type = 'tqdm'
+        ) -> np.ndarray:
+        '''
+        Repeatedly cycle climatology until SOC state reaches equilibrium. See
+        `TCF.forward_run()` for details on `drivers` and `state` arguments.
+
+        Parameters
+        ----------
+        drivers : Sequence or numpy.ndarray
+            Either a 1D sequence of P driver variables; a 2D (P x N) array for
+            N pixels, or a 3D data cube of shape (P x N x T) for T time steps
+        state : Sequence or numpy.ndarray or None
+            A sequence of 3 values or an (3 x N) array representing the
+            SOC state in each SOC pool
+        dates : Sequence or numpy.ndarray or None
+            If `npp_sum` was not provided to `TCF` during initialization, you
+            must provide a sequence of `datetime.date` instances, of length T
+            for T time steps, indicating the current year of each time step.
+        max_steps : int
+            Maximum number of climatology cycles (365-day years) to apply
+            (Default: 100)
+        threshold : float
+            Threshold for inter-annual change in NEE [g C m-2 year-1]; when the
+            difference in the annual NEE sum is less than this number, spin-up
+            is complete (Default: 1 g C m-2 year-1)
+        verbose : bool
+            True to show a progress bar and other messages (Default: True)
+
+        Returns
+        -------
+        tuple
+            A 2-element tuple of (Annual NEE sum, Tolerance)
+        '''
+        # NOTE: Allowing for state variables other than SOC to be included in
+        #   a later version
+        soc = state
+        if soc is None:
+            soc = self.state.soc
+        clim = []
+        for each in drivers:
+            clim.append(
+                climatology365(each.swapaxes(0, 1), dates).swapaxes(0, 1))
+        gpp, npp, litter, tmult, wmult = self._setup_forward(
+            np.stack(clim, axis = 0), state, dates)
+        disable = (not verbose or not verbose_type == 'tqdm')
+        for step in tqdm(range(0, max_steps), disable = disable):
+            nee, _, _ = self.forward_run(drivers, soc, dates, verbose = False)
+            nee_sum = nee.sum(axis = -1)[0]
+            if step == 0:
+                nee_last = nee_sum
+            else:
+                diff = (nee_last - nee_sum)
+                nee_last = nee_sum
+                if abs(diff) < threshold:
+                    break
+            if step > 0 and verbose and verbose_type != 'tqdm':
+                print(
+                    'Change in annual NEE sum [SOC state]: %.2f, [%.0f]' %
+                    (diff, self.state.soc.sum()))
+        return (nee_sum, diff)

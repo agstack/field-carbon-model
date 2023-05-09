@@ -2,6 +2,8 @@
 Tests using or against the `pyl4c` library.
 '''
 
+import csv
+import datetime
 import os
 import numpy as np
 import pytest
@@ -12,6 +14,36 @@ from test_models import random_tcf_data_cube
 from pyl4c.data.fixtures import restore_bplut_flat
 
 BPLUT = os.path.join(os.path.dirname(fieldcarb.__file__), 'data/SMAP_BPLUT_V7_rev_20220728.csv')
+CLIM_FILE = os.path.join(os.path.dirname(fieldcarb.__file__), 'data/example_climatology_US-Ne3.csv')
+
+
+def test_tcf_clim_cycle():
+    '''
+    Tests that spin-up works as expected for a single FLUXNET site.
+    '''
+    params = restore_bplut_flat(BPLUT)
+    # NOTE: L4C BPLUT has soil wetness in [%] units
+    for key in ('smsf0', 'smsf1', 'smrz0', 'smrz1'):
+        params[key] /= 100 # Convert from [%] to proportion
+    soc_state = [173.6, 130.7, 2159.4] # Vv7042 state on April 1, 2015
+    drivers = []
+    with open(CLIM_FILE, 'r') as file:
+        reader = csv.reader(file)
+        for line in reader:
+            if reader.line_num == 1:
+                continue
+            drivers.append(list(map(float, line)))
+    drivers = np.stack(drivers, axis = -1)[:,np.newaxis,:]
+    dates = [
+        datetime.date(2023, 1, 1) + datetime.timedelta(days = d)
+        for d in range(0, 365)
+    ]
+    tcf = TCF(params, [8], state = soc_state)
+    nee, tol = tcf.spin_up(drivers, dates = dates, threshold = 0.5, verbose = False)
+    assert round(tol, 0) == 0.0
+    assert round(nee, 0) == 423
+    assert tcf.state.soc.sum().round(0) == 4669
+
 
 def test_tcf_gpp_using_v7_params_table_interface():
     '''
