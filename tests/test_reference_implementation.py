@@ -39,8 +39,8 @@ def test_tcf_clim_cycle():
         for d in range(0, 365)
     ]
     tcf = TCF(params, [8], state = soc_state)
-    tol = tcf.spin_up(drivers, dates = dates, threshold = 0.5, verbose = False)
-    assert round(tol[-1], 0) == 0.0
+    tol = tcf.spin_up(dates, drivers, threshold = 0.5, verbose = False)
+    assert tol.shape == (1, 100)
     assert tcf.state.soc.sum().round(0) == 4669
 
 

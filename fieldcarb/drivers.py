@@ -35,7 +35,8 @@ def drivers_for_tcf(drivers: np.ndarray) -> np.ndarray:
     Parameters
     ----------
     drivers : numpy.ndarray
-        Input raw driver datasets
+        Input raw driver datasets, either a (P x N x T) array or a (P x T)
+        array of P driver fields, N pixels, and T time steps
 
     Returns
     -------
@@ -53,7 +54,12 @@ def drivers_for_tcf(drivers: np.ndarray) -> np.ndarray:
     par = par_from_shortwave(swrad)
     vpd = vapor_pressure_deficit(qv2m, ps, tmean)
     ft = np.where(tmin < 0, 0, 1)
-    return np.stack([fpar, par, tmin, vpd, smrz, ft, tsoil, smsf])
+    result = np.stack([
+        fpar, par, tmin, vpd, smrz, ft, tsoil, smsf
+    ], axis = 0)
+    if result.ndim == 2:
+        return result[:,np.newaxis,:]
+    return result
 
 
 def par_from_shortwave(swrad):

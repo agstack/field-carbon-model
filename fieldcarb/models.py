@@ -107,6 +107,8 @@ class TCF(object):
                 assert state.ndim <= 2, '"state" should have at most 2 dimensions'
             # "state" either begins as or is converted to a numpy.ndarray
             state = np.array(state, dtype = np.float32)
+            if state.ndim == 1:
+                state = state[:,np.newaxis]
             assert len(state) == 3, 'Expected one "state" value for each SOC pool'
             self.state.add('soc', np.array(state))
         # Create a parameters vector; e.g., for a land-cover map:
@@ -405,9 +407,9 @@ class TCF(object):
         return rh
 
     def spin_up(
-            self, drivers: Sequence, state: Sequence = None,
-            dates: Sequence = None, max_steps: int = 100, threshold: float = 1,
-            verbose: bool = True, verbose_type = 'tqdm'
+            self, dates: Sequence, drivers: Sequence, state: Sequence = None,
+            max_steps: int = 100, threshold: float = 1, verbose: bool = True,
+            verbose_type = 'tqdm'
         ) -> np.ndarray:
         '''
         Repeatedly cycle climatology until SOC state reaches equilibrium. See
@@ -415,16 +417,15 @@ class TCF(object):
 
         Parameters
         ----------
+        dates : Sequence or numpy.ndarray
+            A sequence of `datetime.date` instances, of length T for T time
+            steps
         drivers : Sequence or numpy.ndarray
             Either a 1D sequence of P driver variables; a 2D (P x N) array for
             N pixels, or a 3D data cube of shape (P x N x T) for T time steps
         state : Sequence or numpy.ndarray or None
             A sequence of 3 values or an (3 x N) array representing the
             SOC state in each SOC pool
-        dates : Sequence or numpy.ndarray or None
-            If `litterfall` was not provided to `TCF` during initialization,
-            you must provide a sequence of `datetime.date` instances, of length
-            T for T time steps, indicating the current year of each time step.
         max_steps : int
             Maximum number of climatology cycles (365-day years) to apply
             (Default: 100)

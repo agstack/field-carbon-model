@@ -24,7 +24,8 @@ def drivers_from_csv(file_path: str, fields_diff: Sequence = None):
     Returns
     -------
     tuple
-        A 2-element tuple of `(drivers, dates)`
+        A 2-element tuple of `(drivers, dates)` where `drivers` is a 2D
+        NumPy array of shape (P x T)
     '''
     expected = ['fpar', 'swrad', 'tmean', 'qv2m', 'ps', 'tmin', 'smrz', 'tsoil', 'smsf']
     # To facilitate testing and some edge cases, allow (advanced) user to
