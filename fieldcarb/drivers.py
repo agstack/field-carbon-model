@@ -1,8 +1,59 @@
 '''
-Utilities for creating consistent model driver data.
+Utilities for creating consistent model driver data. The common format for
+raw driver data is a (P x N x T) data cube of P raw fields, in order:
+
+    Abbreviation    Description
+    ------------    -----------
+    fpar
+    swrad
+    tmean
+    qv2m
+    ps
+    tmin
+    smrz
+    tsoil
+    smsf
 '''
 
 import numpy as np
+
+
+def drivers_for_tcf(drivers: np.ndarray) -> np.ndarray:
+    '''
+    Generates a drivers data cube for TCF, which expects the following
+    drivers, in order:
+
+        Fraction of PAR intercepted (fPAR) [0-1]
+        Photosynthetically active radation (PAR) [MJ m-2 day-1]
+        Minimum temperature (Tmin) [deg K]
+        Vapor pressure deficit (VPD) [Pa]
+        Root-zone soil moisture wetness, volume proportion [0-1]
+        Freeze-thaw (FT) state of soil [0 = Frozen, 1 = Thawed]
+        Soil temperature in the top (0-5 cm) layer [deg K]
+        Surface soil moisture wetness, volume proportion [0-1]
+
+    Parameters
+    ----------
+    drivers : numpy.ndarray
+        Input raw driver datasets
+
+    Returns
+    -------
+    numpy.ndarray
+    '''
+    fpar, swrad, tmean, qv2m, ps, tmin, smrz, tsoil, smsf = drivers
+    assert np.nanmin(smrz) >= 0 and np.nanmax(smrz) <= 1,\
+        'Surface soil moisture (SMSF) is not bounded by [0,1]'
+    assert np.nanmin(smrz) >= 0 and np.nanmax(smrz) <= 1,\
+        'Root-zone soil moisture (SMRZ) is not bounded by [0,1]'
+    assert np.nanmin(tmin) >= 200 and np.nanmax(smrz) <= 320,\
+        'Minimum temperature is probably not in deg K; should be bounded [200,320]'
+    assert np.nanmin(tmean) >= 200 and np.nanmax(tmean) <= 320,\
+        'Mean temperature is probably not in deg K; should be bounded [200,320]'
+    par = par_from_shortwave(swrad)
+    vpd = vapor_pressure_deficit(qv2m, ps, tmean)
+    ft = np.where(tmin < 0, 0, 1)
+    return np.stack([fpar, par, tmin, vpd, smrz, ft, tsoil, smsf])
 
 
 def par_from_shortwave(swrad):
@@ -25,7 +76,7 @@ def par_from_shortwave(swrad):
     return np.divide(np.multiply(0.45, swrad), 11.5741)
 
 
-def vpd(qv2m, ps, temp_k):
+def vapor_pressure_deficit(qv2m, ps, temp_k):
 	r'''
     Calculates vapor pressure deficit (VPD).
 

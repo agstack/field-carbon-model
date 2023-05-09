@@ -230,9 +230,9 @@ class TCF(object):
         ) -> np.ndarray:
         '''
         Runs the TCF model forward in time for daily time steps. This is the
-        recommended interface for most users. If `npp_sum` was not provided to
-        `TCF` at initialization, it will be necessary to provide at least 365
-        daily steps and the `years` of each time step. Order of driver
+        recommended interface for most users. If `litterfall` was not provided
+        to `TCF` at initialization, it will be necessary to provide at least
+        365 daily steps and the `years` of each time step. Order of driver
         variables should be:
 
             Fraction of PAR intercepted (fPAR) [0-1]
@@ -256,9 +256,9 @@ class TCF(object):
             A sequence of 3 values or an (3 x N) array representing the
             SOC state in each SOC pool
         dates : Sequence or numpy.ndarray or None
-            If `npp_sum` was not provided to `TCF` during initialization, you
-            must provide a sequence of `datetime.date` instances, of length T
-            for T time steps, indicating the current year of each time step.
+            If `litterfall` was not provided to `TCF` during initialization,
+            you must provide a sequence of `datetime.date` instances, of length
+            T for T time steps, indicating the current year of each time step.
         verbose : bool
             True to show a progress bar and other messages (Default: True)
 
@@ -288,6 +288,7 @@ class TCF(object):
             dc2 = (litter * (1 - self.params.f_metabolic.T)) - rh_t[1,...]
             dc3 = (self.params.f_structural.T * rh_t[1,...]) - rh_t[2,...]
             for i, delta in enumerate([dc1, dc2, dc3]):
+                delta[np.isnan(delta)] = 0 # Protect against NaN contamination
                 soc[i] += delta[0]
             # "the adjustment...to account for material transferred into the slow
             #   pool during humification" (Jones et al. 2017, TGARS, p.5); note
@@ -421,9 +422,9 @@ class TCF(object):
             A sequence of 3 values or an (3 x N) array representing the
             SOC state in each SOC pool
         dates : Sequence or numpy.ndarray or None
-            If `npp_sum` was not provided to `TCF` during initialization, you
-            must provide a sequence of `datetime.date` instances, of length T
-            for T time steps, indicating the current year of each time step.
+            If `litterfall` was not provided to `TCF` during initialization,
+            you must provide a sequence of `datetime.date` instances, of length
+            T for T time steps, indicating the current year of each time step.
         max_steps : int
             Maximum number of climatology cycles (365-day years) to apply
             (Default: 100)
@@ -436,8 +437,8 @@ class TCF(object):
 
         Returns
         -------
-        tuple
-            A 2-element tuple of (Annual NEE sum, Tolerance)
+        numpy.ndarray
+            The history of change in annual NEE
         '''
         # NOTE: Allowing for state variables other than SOC to be included in
         #   a later version
@@ -449,20 +450,21 @@ class TCF(object):
             clim.append(
                 climatology365(each.swapaxes(0, 1), dates).swapaxes(0, 1))
         gpp, npp, litter, tmult, wmult = self._setup_forward(
-            np.stack(clim, axis = 0), state, dates)
+            drivers, state, dates)
+        tolerance = np.nan * np.ones((soc.shape[-1], max_steps), np.float32)
         disable = (not verbose or not verbose_type == 'tqdm')
         for step in tqdm(range(0, max_steps), disable = disable):
             nee, _, _ = self.forward_run(drivers, soc, dates, verbose = False)
-            nee_sum = nee.sum(axis = -1)[0]
+            nee_sum = np.nansum(nee, axis = -1)
             if step == 0:
                 nee_last = nee_sum
             else:
-                diff = (nee_last - nee_sum)
+                tolerance[:,step] = (nee_last - nee_sum)
                 nee_last = nee_sum
-                if abs(diff) < threshold:
+                if (np.abs(tolerance[:,step]) < threshold).all():
                     break
             if step > 0 and verbose and verbose_type != 'tqdm':
                 print(
                     'Change in annual NEE sum [SOC state]: %.2f, [%.0f]' %
-                    (diff, self.state.soc.sum()))
-        return (nee_sum, diff)
+                    (tolerance[:,step], self.state.soc.sum()))
+        return tolerance
