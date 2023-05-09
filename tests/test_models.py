@@ -3,10 +3,15 @@ Integration test suite for core models.
 '''
 
 import datetime
+import json
+import os
 import numpy as np
 import pytest
+import fieldcarb
+from fieldcarb.io import params_dict_from_json
 from fieldcarb.models import TCF
 
+BPLUT = os.path.join(os.path.dirname(fieldcarb.__file__), 'data/SPL4CMDL_V7_BPLUT.json')
 BROADLEAF_PARAMETERS = { # Example parameters for Broadleaf Croplands
     'LUE': 2.09, 'tmin0': 262.5, 'tmin1': 297.6, 'vpd0': 1500, 'vpd1': 7000,
     'smrz0': 0.0, 'smrz1': 0.3, 'smsf0': 0.0, 'smsf1': 0.25, 'ft0': 1.00,
@@ -130,6 +135,24 @@ def test_tcf_gpp_values_2d():
     assert gpp[pft == 1].max() == 31.7
 
 
+def test_tcf_gpp_with_l4c_parameters():
+    '''
+    Test that the TCF model's GPP calculation works as expected when using
+    parameters read-in from a file.
+    '''
+    soc_state, drivers = random_tcf_data_cube(100, 365, seed = 406)
+    # NOTE: Using 0 and 1 for the land-cover types for convenience
+    pft = np.random.choice(np.arange(1, 9), size = 100)
+    params = params_dict_from_json(BPLUT)
+    tcf = TCF(params, pft, soc_state)
+    gpp = tcf.gpp(drivers[0:6]).round(2)
+    assert gpp.shape == (100, 365)
+    assert np.median(gpp) == 1.34
+    assert np.var(gpp).round(2) == 6.21
+    assert gpp.min() == 0.0
+    assert gpp.max() == 24.85
+
+
 def test_tcf_rh_values_1d():
     '''
     Test that the TCF model's RH calculation is consistent for a single
@@ -139,8 +162,9 @@ def test_tcf_rh_values_1d():
     pft = [0] * 100
     tcf = TCF(CEREAL_PARAMETERS, pft, state = soc_state)
     # Using just one time slice
-    rh = tcf.rh(drivers[-2:][...,0]).sum(axis = 0).round(2)
-    assert rh.shape == (100,)
+    rh = tcf.rh(drivers[-2:][...,0])
+    assert rh.shape == (3, 100)
+    rh = rh.sum(axis = 0).round(2)
     assert np.median(rh).round(2) == 0.57
     assert np.var(rh).round(2) == 0.28
     assert rh.min() == 0.0
@@ -160,9 +184,30 @@ def test_tcf_rh_values_2d():
         zip(CEREAL_PARAMETERS.values(), BROADLEAF_PARAMETERS.values())))
     tcf = TCF(params, pft, soc_state)
     # Using just one time slice
-    rh = tcf.rh(drivers[-2:][...,0]).sum(axis = 0).round(2)
-    assert rh.shape == (100,)
+    rh = tcf.rh(drivers[-2:][...,0])
+    assert rh.shape == (3, 100)
+    rh = rh.sum(axis = 0).round(2)
     assert np.median(rh).round(2) == 0.68
     assert np.var(rh).round(2) == 0.40
     assert rh.min() == 0.0
     assert rh.max() == 2.94
+
+
+def test_tcf_rh_with_l4c_parameters():
+    '''
+    Test that the TCF model's RH calculation works as expected when using
+    parameters read-in from a file.
+    '''
+    soc_state, drivers = random_tcf_data_cube(100, 50, seed = 406)
+    # NOTE: Using 0 and 1 for the land-cover types for convenience
+    pft = np.random.choice(np.arange(1, 9), size = 100)
+    params = params_dict_from_json(BPLUT)
+    tcf = TCF(params, pft, soc_state)
+    # Using just one time slice
+    rh = tcf.rh(drivers[-2:][...,0]).round(2)
+    assert rh.shape == (3, 100)
+    rh = rh.sum(axis = 0).round(2)
+    assert np.median(rh).round(2) == 0.48
+    assert np.var(rh).round(2) == 0.39
+    assert rh.min() == 0.0
+    assert rh.max() == 2.88
