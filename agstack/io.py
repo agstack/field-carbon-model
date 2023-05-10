@@ -1,5 +1,6 @@
 '''
-File interchange utilities, e.g., reading and writing parameter tables.
+File input/output (IO) and interchange utilities, e.g., reading and writing
+parameter tables.
 '''
 
 import csv
@@ -9,7 +10,7 @@ import numpy as np
 from typing import Sequence
 
 
-def drivers_from_csv(file_path: str, fields_diff: Sequence = None):
+def drivers_from_csv(file_path: str, fields_diff: Sequence = None) -> tuple:
     '''
     For a single-site time series, read driver data in from a CSV file. Each
     row should be a time step for a single site.
@@ -62,7 +63,7 @@ def drivers_from_csv(file_path: str, fields_diff: Sequence = None):
     return (np.array(drivers).swapaxes(0, 1), np.array(dates))
 
 
-def params_dict_from_json(file_path: str, **kwargs):
+def params_dict_from_json(file_path: str, **kwargs) -> dict:
     '''
     Writes a parameter dictionary (e.g., as from
     `pyl4c.data.fixtures.restore_bplut_flat()`) to a JSON file, with proper
@@ -72,6 +73,10 @@ def params_dict_from_json(file_path: str, **kwargs):
     ----------
     file_path : str
         The input file path
+
+    Returns
+    -------
+    dict
     '''
     with open(file_path, 'r') as file:
         params = json.load(file)

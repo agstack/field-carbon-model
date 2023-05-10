@@ -23,6 +23,24 @@ pip install -e .[pyl4c]
 ```
 
 
+Running Tests
+-------------
+
+The test suite depends on `pytest`.
+
+```sh
+pip install -e .[dev]
+```
+
+**Tests can be run with:**
+
+```sh
+pytest tests/
+```
+
+Some tests depend on having `pyl4c` installed and will be skipped if the module is not available.
+
+
 Prior Art and Citation
 ----------------------
 

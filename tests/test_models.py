@@ -7,11 +7,11 @@ import json
 import os
 import numpy as np
 import pytest
-import fieldcarb
-from fieldcarb.io import params_dict_from_json
-from fieldcarb.models import TCF
+import agstack
+from agstack.io import params_dict_from_json
+from agstack.models import TCF
 
-BPLUT = os.path.join(os.path.dirname(fieldcarb.__file__), 'data/SPL4CMDL_V7_BPLUT.json')
+BPLUT = os.path.join(os.path.dirname(agstack.__file__), 'data/SPL4CMDL_V7_BPLUT.json')
 BROADLEAF_PARAMETERS = { # Example parameters for Broadleaf Croplands
     'LUE': 2.09, 'tmin0': 262.5, 'tmin1': 297.6, 'vpd0': 1500, 'vpd1': 7000,
     'smrz0': 0.0, 'smrz1': 0.3, 'smsf0': 0.0, 'smsf1': 0.25, 'ft0': 1.00,

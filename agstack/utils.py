@@ -1,4 +1,5 @@
 '''
+A bestiary of functions and utilities for modeling cropland carbon.
 '''
 
 import numpy as np

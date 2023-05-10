@@ -15,8 +15,8 @@ import numpy as np
 from numbers import Number
 from typing import Sequence
 from tqdm import tqdm
-from fieldcarb import Namespace
-from fieldcarb.utils import arrhenius, linear_constraint, climatology365
+from agstack import Namespace
+from agstack.utils import arrhenius, linear_constraint, climatology365
 
 
 class TCF(object):

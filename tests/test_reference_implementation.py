@@ -8,13 +8,13 @@ import os
 import numpy as np
 import pytest
 pytest.importorskip('pyl4c')
-import fieldcarb
-from fieldcarb.models import TCF
+import agstack
+from agstack.models import TCF
 from test_models import random_tcf_data_cube
 from pyl4c.data.fixtures import restore_bplut_flat
 
-BPLUT = os.path.join(os.path.dirname(fieldcarb.__file__), 'data/SMAP_BPLUT_V7_rev_20220728.csv')
-CLIM_FILE = os.path.join(os.path.dirname(fieldcarb.__file__), 'data/example_climatology_US-Ne3.csv')
+BPLUT = os.path.join(os.path.dirname(agstack.__file__), 'data/SMAP_BPLUT_V7_rev_20220728.csv')
+CLIM_FILE = os.path.join(os.path.dirname(agstack.__file__), 'data/example_climatology_US-Ne3.csv')
 
 
 def test_tcf_clim_cycle():
