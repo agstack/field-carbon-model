@@ -22,7 +22,9 @@ from fieldcarb.utils import arrhenius, linear_constraint, climatology365
 class TCF(object):
     '''
     The Terrestrial Carbon Flux (TCF) model, a starting point for field-scale
-    carbon (CO2) flux modeling. TCF incorporates these basic assumptions:
+    carbon (CO2) flux modeling. TCF is the basis for the NASA Soil Moisture
+    Active Passive (SMAP) Level 4 Carbon (L4C) model. TCF incorporates these
+    basic assumptions:
 
     1. Carbon assimilation (gross primary production) is linearly related to
         the amount of solar radiation and green photosynthetic land cover.
@@ -55,8 +57,8 @@ class TCF(object):
 
     Example use for a single pixel:
 
-        tcf = TCF(land_cover_map = [7])
-        tcf.nee_daily(state = [500, 500, 1000], drivers = [...])
+        tcf = TCF(params, land_cover_map = [7])
+        tcf.nee(state = [500, 500, 1000], drivers = [...])
 
 
     Parameters
@@ -85,9 +87,17 @@ class TCF(object):
         'f_metabolic'
     ]
     valid_pft = {
+        1: 'Evergreen Needleleaf',
+        2: 'Evergreen Broadleaf',
+        3: 'Deciduous Needleleaf',
+        4: 'Deciduous Broadleaf',
+        5: 'Shrubland',
+        6: 'Grassland',
         7: 'Cereal Croplands',
         8: 'Broadleaf Croplands'
     }
+
+    version = '7.4.1' # Pegged to the SMAP L4C version
 
     def __init__(
             self, params: dict, land_cover_map: Sequence,
