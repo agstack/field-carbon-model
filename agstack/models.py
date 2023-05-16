@@ -343,7 +343,7 @@ class TCF(object):
         -------
         numpy.ndarray
             Gross primary production (GPP) in [g C m-2 time-1] where time is
-            the time step of the PAR data, e.g., [g c m-2 day-1]
+            the time step of the PAR data, e.g., [g C m-2 day-1]
         '''
         if drivers.shape[0] == 5:
             fpar, par, tmin, vpd, smrz0 = drivers
