@@ -95,6 +95,22 @@ def test_tcf_forward_run_values():
                   [ 182,101, 6039]])).all()
 
 
+def test_tcf_spin_up_values():
+    '''
+    Test that the TCF model's spin-up calculations are consistent.
+    '''
+    soc_state, drivers = random_tcf_data_cube(
+        10, 365, seed = 406, seasonal_cycle = True)
+    dates = [
+        datetime.date(2023, 1, 1) + datetime.timedelta(days = d)
+        for d in range(0, 365)
+    ]
+    pft = [0] * 10
+    tcf = TCF(CEREAL_PARAMETERS, pft, state = soc_state)
+    tolerance = tcf.spin_up(dates, drivers, verbose = False)
+    assert (np.nanmin(np.abs(tolerance), axis = -1) < 1).all()
+
+
 def test_tcf_gpp_values_1d():
     '''
     Test that the TCF model's GPP calculation is consistent for a single

@@ -418,7 +418,7 @@ class TCF(object):
 
     def spin_up(
             self, dates: Sequence, drivers: Sequence, state: Sequence = None,
-            max_steps: int = 100, threshold: float = 1, verbose: bool = True,
+            max_steps: int = 1000, threshold: float = 1, verbose: bool = True,
             verbose_type = 'tqdm'
         ) -> np.ndarray:
         '''
@@ -460,12 +460,13 @@ class TCF(object):
         for each in drivers:
             clim.append(
                 climatology365(each.swapaxes(0, 1), dates).swapaxes(0, 1))
-        gpp, npp, litter, tmult, wmult = self._setup_forward(
-            drivers, state, dates)
         tolerance = np.nan * np.ones((soc.shape[-1], max_steps), np.float32)
         disable = (not verbose or not verbose_type == 'tqdm')
         for step in tqdm(range(0, max_steps), disable = disable):
             nee, _, _ = self.forward_run(drivers, soc, dates, verbose = False)
+            # Diagnostics
+            # rh_sum = rh.sum(axis = 0).sum(axis = -1)
+            # npp_sum = (gpp * self.params.CUE).sum(axis = -1)
             nee_sum = np.nansum(nee, axis = -1)
             if step == 0:
                 nee_last = nee_sum
@@ -474,8 +475,12 @@ class TCF(object):
                 nee_last = nee_sum
                 if (np.abs(tolerance[:,step]) < threshold).all():
                     break
+            # Diagnostics
+            # rh_track[:,step] = rh_sum
+            # npp_track[:,step] = npp_sum
+            # soc_track[:,step] = self.state.soc.sum(axis = 0)
             if step > 0 and verbose and verbose_type != 'tqdm':
                 print(
                     'Change in annual NEE sum [SOC state]: %.2f, [%.0f]' %
-                    (tolerance[:,step], self.state.soc.sum()))
+                    (np.nanmean(tolerance[:,step]), self.state.soc.sum()))
         return tolerance
