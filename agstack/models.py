@@ -238,7 +238,8 @@ class TCF(object):
 
     def forward_run(
             self, drivers: Sequence, state: Sequence = None,
-            dates: Sequence = None, verbose: bool = True
+            dates: Sequence = None, dynamic_litter: bool = False,
+            verbose: bool = True
         ) -> np.ndarray:
         '''
         Runs the TCF model forward in time for daily time steps. This is the
@@ -271,6 +272,13 @@ class TCF(object):
             If `litterfall` was not provided to `TCF` during initialization,
             you must provide a sequence of `datetime.date` instances, of length
             T for T time steps, indicating the current year of each time step.
+        dynamic_litter : bool
+            TCF assumes that litterfall is an equal daily fraction of the
+            annual NPP sum. This can lead to an imbalance between RH and NPP,
+            even in the dynamic steady-state. If `True`, daily litterfall is
+            set equal to the daily NPP (i.e., all daily NPP is available
+            immediately as litterfall), which resolves this imbalance,
+            resulting in RH ~= NPP. Default is `False`.
         verbose : bool
             True to show a progress bar and other messages (Default: True)
 
@@ -291,6 +299,9 @@ class TCF(object):
         # Forward time steps
         steps = range(0, drivers.shape[-1])
         for t in tqdm(steps, disable = not verbose):
+            if dynamic_litter:
+                # Will ensure that NPP(t) ~= RH(t) in the dynamic steady-state
+                litter = npp[...,t]
             rh_t = np.empty((3, litter.shape[0])) # Allocate RH(t) array
             for pool in range(0, soc.shape[0]):
                 rh_t[pool] = self.params.decay_rates[pool] *\
@@ -463,7 +474,7 @@ class TCF(object):
         tolerance = np.nan * np.ones((soc.shape[-1], max_steps), np.float32)
         disable = (not verbose or not verbose_type == 'tqdm')
         for step in tqdm(range(0, max_steps), disable = disable):
-            nee, _, _ = self.forward_run(drivers, soc, dates, verbose = False)
+            nee, gpp, rh = self.forward_run(drivers, soc, dates, verbose = False)
             # Diagnostics
             # rh_sum = rh.sum(axis = 0).sum(axis = -1)
             # npp_sum = (gpp * self.params.CUE).sum(axis = -1)
