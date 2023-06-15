@@ -3,7 +3,7 @@ requires = ["setuptools", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "field-carbon-model"
+name = "agstack"
 version = "0.1.0"
 authors = [
     {name = "K. Arthur Endsley", email = "arthur.endsley@ntsg.umt.edu"},
