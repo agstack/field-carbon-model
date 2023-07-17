@@ -3,5 +3,8 @@ lib/python/build
 *.egg-info/
 __pycache__
 
+build/
+dist/
+
 notebooks/.ipynb_checkpoints/
 notebooks/assets

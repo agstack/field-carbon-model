@@ -4,15 +4,15 @@ raw driver data is a (P x N x T) data cube of P raw fields, in order:
 
     Abbreviation    Description
     ------------    -----------
-    fpar
-    swrad
-    tmean
-    qv2m
-    ps
-    tmin
-    smrz
-    tsoil
-    smsf
+    fpar            Fraction of PAR intercepted (fPAR) [0-1]
+    swrad           Downwelling short-wave radiation [W m-2]
+    tmean           Mean air temperature (2-meter height) [deg K]
+    qv2m            Water vapor mixing ratio (2-meter height)
+    ps              Surface air pressure [Pascals]
+    tmin            Daily minimum air temperature [deg K]
+    smrz            Root-zone soil moisture wetness, volume proportion [0-1]
+    tsoil           Soil temperature in the top (0-5 cm) layer [deg K]
+    smsf            Surface soil moisture wetness, volume proportion [0-1]
 '''
 
 import numpy as np
@@ -21,11 +21,11 @@ import numpy as np
 def drivers_for_tcf(drivers: np.ndarray) -> np.ndarray:
     '''
     Generates a drivers data cube for TCF, which expects the following
-    drivers, in order:
+    drivers, in order (i.e., these are the output fields of this function):
 
         Fraction of PAR intercepted (fPAR) [0-1]
         Photosynthetically active radation (PAR) [MJ m-2 day-1]
-        Minimum temperature (Tmin) [deg K]
+        Daily minimum air temperature [deg K]
         Vapor pressure deficit (VPD) [Pa]
         Root-zone soil moisture wetness, volume proportion [0-1]
         Freeze-thaw (FT) state of soil [0 = Frozen, 1 = Thawed]
@@ -99,7 +99,7 @@ def vapor_pressure_deficit(qv2m, ps, temp_k):
 
         Water vapor mixing ratio at 2-m height (QV2M) [kg kg-1]
         Surface air pressure [Pa]
-        Minimum temperature (Tmin) [deg K]
+        Minimum temperature [deg K]
 
     NOTE: A variation on this formula can be found in the text:
 
