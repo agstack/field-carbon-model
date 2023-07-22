@@ -236,6 +236,48 @@ class TCF(object):
         wmult = f_smsf(smsf).swapaxes(0, 1)
         return (gpp, npp, litter, tmult, wmult)
 
+    def diagnose_emult(self, drivers):
+        '''
+        Returns the environmental constraint multiplier on GPP (Emult). This
+        dimensionless quantity indicates the aggregate impact of
+        meteorological conditions on GPP. Order of driver variables should be:
+
+            Fraction of PAR intercepted (fPAR) [0-1]
+            Photosynthetically active radation (PAR) [MJ m-2 day-1]
+            Minimum temperature (Tmin) [deg K]
+            Vapor pressure deficit (VPD) [Pa]
+            Root-zone soil moisture wetness, volume proportion [0-1]
+            Freeze-thaw (FT) state of soil [0 = Frozen, 1 = Thawed]
+
+        Parameters
+        ----------
+        drivers : Sequence or numpy.ndarray
+            Either a 1D sequence of P driver variables; a 2D (P x N) array for
+            N pixels, or a 3D data cube of shape (P x N x T) for T time steps
+
+        Returns
+        -------
+        tuple
+            4-tuple of (FT, Tmin, VPD, SMRZ) environmental constraints
+        '''
+        if drivers.shape[0] == 5:
+            fpar, par, tmin, vpd, smrz0 = drivers
+            ft0 = np.where(tmin < 273.15, 0, 1)
+        else:
+            fpar, par, tmin, vpd, smrz0, ft0 = drivers
+        # Rescale root-zone soil moisture
+        smrz = self._rescale_smrz(smrz0, np.nanmin(smrz0, axis = -1))
+        # Convert freeze-thaw flag to a multiplier (always 1 when thawed but
+        #   potentially non-zero and less than 1 when thawed)
+        ft = np.where(ft0 == 0, self.params.ft0, 1)
+        # Get a function that constrains each met. driver to [0, 1]
+        f_tmin = linear_constraint(self.params.tmin0, self.params.tmin1)(tmin)
+        f_vpd = linear_constraint(
+            self.params.vpd0, self.params.vpd1, 'reversed')(vpd)
+        f_smrz = linear_constraint(self.params.smrz0, self.params.smrz1)(smrz)
+        # Compute the environmental constraint
+        return (ft, f_tmin, f_vpd, f_smrz)
+
     def forward_run(
             self, drivers: Sequence, state: Sequence = None,
             dates: Sequence = None, dynamic_litter: bool = False,
@@ -357,22 +399,11 @@ class TCF(object):
             the time step of the PAR data, e.g., [g C m-2 day-1]
         '''
         if drivers.shape[0] == 5:
-            fpar, par, tmin, vpd, smrz0 = drivers
-            ft0 = np.where(tmin < 273.15, 0, 1)
+            fpar, par, _, _, _ = drivers
         else:
-            fpar, par, tmin, vpd, smrz0, ft0 = drivers
-        # Rescale root-zone soil moisture
-        smrz = self._rescale_smrz(smrz0, np.nanmin(smrz0, axis = -1))
-        # Convert freeze-thaw flag to a multiplier (always 1 when thawed but
-        #   potentially non-zero and less than 1 when thawed)
-        ft = np.where(ft0 == 0, self.params.ft0, 1)
-        # Get a function that constrains each met. driver to [0, 1]
-        f_tmin = linear_constraint(self.params.tmin0, self.params.tmin1)
-        f_vpd = linear_constraint(
-            self.params.vpd0, self.params.vpd1, 'reversed')
-        f_smrz = linear_constraint(self.params.smrz0, self.params.smrz1)
-        # Compute the environmental constraint
-        e_mult = ft * f_tmin(tmin) * f_vpd(vpd) * f_smrz(smrz)
+            fpar, par, _, _, _, _ = drivers
+        ft, f_tmin, f_vpd, f_smrz = self.diagnose_emult(drivers)
+        e_mult = ft * f_tmin * f_vpd * f_smrz
         return par * fpar * e_mult * self.params.LUE
 
     def rh(
