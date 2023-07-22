@@ -236,6 +236,41 @@ class TCF(object):
         wmult = f_smsf(smsf).swapaxes(0, 1)
         return (gpp, npp, litter, tmult, wmult)
 
+    def diagnose_kmult(self, drivers):
+        '''
+        Returns the environmental constraint multiplier on RH (Kmult). This
+        dimensionless quantity indicates the aggregate impact of
+        meteorological conditions on heterotrophic respiration (RH). Order of
+        driver variables should be:
+
+            Fraction of PAR intercepted (fPAR) [0-1]
+            Photosynthetically active radation (PAR) [MJ m-2 day-1]
+            Minimum temperature (Tmin) [deg K]
+            Vapor pressure deficit (VPD) [Pa]
+            Root-zone soil moisture wetness, volume proportion [0-1]
+            Freeze-thaw (FT) state of soil [0 = Frozen, 1 = Thawed]
+            Soil temperature in the top (0-5 cm) layer [deg K]
+            Surface soil moisture wetness, volume proportion [0-1]
+
+        Parameters
+        ----------
+        drivers : Sequence or numpy.ndarray
+            Either a 1D sequence of P driver variables; a 2D (P x N) array for
+            N pixels, or a 3D data cube of shape (P x N x T) for T time steps
+
+        Returns
+        -------
+        tuple
+            2-tuple of (Tmult, Wmult), or (Tsoil, SMSF), environmental
+            constraints
+        '''
+        tsoil, smsf = drivers[-2:]
+        f_smsf = linear_constraint(self.params.smsf0, self.params.smsf1)
+        # Swap axes here only to make time the major (first) axis
+        tmult = arrhenius(tsoil, self.params.tsoil)
+        wmult = f_smsf(smsf)
+        return (tmult, wmult)
+
     def diagnose_emult(self, drivers):
         '''
         Returns the environmental constraint multiplier on GPP (Emult). This
@@ -403,8 +438,8 @@ class TCF(object):
         else:
             fpar, par, _, _, _, _ = drivers
         ft, f_tmin, f_vpd, f_smrz = self.diagnose_emult(drivers)
-        e_mult = ft * f_tmin * f_vpd * f_smrz
-        return par * fpar * e_mult * self.params.LUE
+        emult = ft * f_tmin * f_vpd * f_smrz
+        return par * fpar * emult * self.params.LUE
 
     def rh(
             self, drivers: Sequence, state: Sequence = None
