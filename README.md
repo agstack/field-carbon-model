@@ -74,3 +74,8 @@ Prior Art and Citation
 ----------------------
 
 Model code here is based heavily on the publicly available [`pyl4c` package](https://github.com/arthur-e/pyl4c) (Endsley et al. 2022). See `REFERENCES` for a complete list of references.
+
+The fraction of photosynthetically active radiation (fPAR) is currently based on an empirical formula of Sentinel NDVI:
+```
+fPAR = (-18.4 + 120.3*NDVI)
+```
