@@ -224,7 +224,7 @@ class TCF(object):
         npp = self.params.CUE * gpp
         # Compute litterfall from the mean annual NPP sum
         if litter is None:
-            npp_sum = climatology365(gpp.swapaxes(0, 1), dates).sum(axis = 0)
+            npp_sum = climatology365(npp.swapaxes(0, 1), dates).sum(axis = 0)
             # Litterfall is equal daily fraction of average annual NPP
             litter = npp_sum / 365
             self.constants.add('litterfall', litter)
